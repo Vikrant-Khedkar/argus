@@ -1,8 +1,24 @@
 # Argus 👁️
 
-OSS vs frontier AI assistants, with a standalone scorer that grades any AI response on hallucination / discrimination / safety. Built because most AI vendors ship without measuring these — and the same three failure modes are exactly what AI-liability insurance pays out on.
+OSS LLM vs frontier LLM, with a standalone scorer that grades any LLM response on hallucination / discrimination / safety. Built because most AI vendors ship without measuring these — and the same three failure modes are exactly what AI-liability insurance pays out on.
 
 **Eval report (PDF):** [`eval_report.pdf`](eval_report.pdf) — 2 pages, charts + verdict + recommendations.
+
+## Contents
+
+- [Results](#results)
+- [Architecture](#architecture)
+- [Memory](#memory)
+- [Guardrails](#guardrails)
+- [Tool use](#tool-use)
+- [Observability](#observability)
+- [How RiskScorer maps to AI-liability coverage](#how-riskscorer-maps-to-ai-liability-coverage)
+- [Cost and latency](#cost-and-latency)
+- [Security](#security)
+- [Tradeoffs](#tradeoffs)
+- [What I'd improve with more time](#what-id-improve-with-more-time)
+- [Quickstart](#quickstart)
+- [Repo](#repo)
 
 ## Results
 
@@ -57,43 +73,6 @@ flowchart LR
     REP --> MEMO[report/eval_report.md → .html → .pdf]
 ```
 
-## Quickstart
-
-```bash
-git clone <repo> && cd argus
-uv sync
-cp .env.example .env   # fill in OPENROUTER_API_KEY, SGAI_API_KEY, MODAL_API_KEY
-```
-
-**Deploy the OSS model:**
-```bash
-uv run modal deploy -m modal_app
-# copy the printed URL to MODAL_URL in .env
-```
-
-**Use it:**
-```bash
-uv run streamlit run app.py        # chat + live risk panel + observability dashboard
-uv run python cli.py --provider modal     # terminal REPL
-```
-
-**Run the eval:**
-```bash
-uv run python -m evals.run --validate     # judge-validation gate first (12 synthetic cases)
-uv run python -m evals.run                # full 70-prompt run, ~15-25 min, ~$1.50 in judge cost
-uv run python -m evals.report             # generate charts + summary
-```
-
-## Cost + latency (from the actual run)
-
-| | p50 latency | p95 latency | $/1k requests |
-|---|---|---|---|
-| Modal — Qwen2.5-1.5B on T4 GPU | 7.0 s | 11.0 s | ~$1.15 |
-| OpenRouter — GPT-4o-mini | 6.3 s | 9.5 s | ~$1.00 |
-| RiskScorer (3 Claude Sonnet 4 calls per response) | ~8 s | ~12 s | ~$10 |
-
-Modal cost = container runtime × $0.59/hr (T4). Going to Qwen2.5-7B on L4 would land at ~$0.65/1k req (3× current) and based on public benchmarks should close most of the output-liability gap.
-
 ## Memory
 
 Sliding window with summarization on prune. `max_turns=6` (12 messages). When exceeded, the oldest half gets passed back to the model with a "compress this" system prompt; the result lands in `Conversation.summary` and the rest of history continues forward. Same L1+L2 pattern as ChatGPT or Claude.ai.
@@ -127,15 +106,6 @@ Every `Assistant.ask()` writes a JSONL row to `evals/live_log.jsonl` (timestamp,
 
 Local file + Streamlit. No hosted service required. Replaceable with Datadog or Langfuse without changing call sites.
 
-## Security
-
-The Modal endpoint requires an `X-API-Key` header against `MODAL_AUTH_TOKEN` (injected via `modal.Secret`). Without auth, the endpoint is a public GPU on the open internet — anyone could burn cost or use it for harmful generation under your account attribution.
-
-```bash
-curl -X POST $MODAL_URL -d '{"prompt":"hi"}'                          # 401
-curl -X POST $MODAL_URL -H "X-API-Key: $MODAL_API_KEY" -d '{"prompt":"hi"}'  # works
-```
-
 ## How RiskScorer maps to AI-liability coverage
 
 The three axes were chosen to mirror the failure modes AI-liability policies typically cover:
@@ -147,6 +117,25 @@ The three axes were chosen to mirror the failure modes AI-liability policies typ
 | Safety/regulatory liability | Regulatory exposure + content safety |
 
 The eval treats each provider as a candidate vendor and produces a tier rating — which is what an underwriter does. RiskScorer could be packaged as a service: AI vendors pip-install it, run their own deployment against a baseline test set, get a risk score they can present in procurement.
+
+## Cost and latency
+
+| | p50 latency | p95 latency | $/1k requests |
+|---|---|---|---|
+| Modal — Qwen2.5-1.5B on T4 GPU | 7.0 s | 11.0 s | ~$1.15 |
+| OpenRouter — GPT-4o-mini | 6.3 s | 9.5 s | ~$1.00 |
+| RiskScorer (3 Claude Sonnet 4 calls per response) | ~8 s | ~12 s | ~$10 |
+
+Modal cost = container runtime × $0.59/hr (T4). Going to Qwen2.5-7B on L4 would land at ~$0.65/1k req (3× current) and based on public benchmarks should close most of the output-liability gap.
+
+## Security
+
+The Modal endpoint requires an `X-API-Key` header against `MODAL_AUTH_TOKEN` (injected via `modal.Secret`). Without auth, the endpoint is a public GPU on the open internet — anyone could burn cost or use it for harmful generation under your account attribution.
+
+```bash
+curl -X POST $MODAL_URL -d '{"prompt":"hi"}'                                  # 401
+curl -X POST $MODAL_URL -H "X-API-Key: $MODAL_API_KEY" -d '{"prompt":"hi"}'   # works
+```
 
 ## Tradeoffs
 
@@ -164,6 +153,42 @@ The eval treats each provider as a candidate vendor and produces a tier rating �
 - **Output guardrails in `ask()`** — pre-flight RiskScorer check that regenerates Tier-3 responses before they reach the user. Cheap insurance.
 - **Migrate the tool-use eval to [`langchain-ai/agentevals`](https://github.com/langchain-ai/agentevals).** Their `trajectory_match` (subset mode) is purpose-built for the *"did the model call the tool when appropriate?"* question. Currently I count invocations from the observability log — works, but ad-hoc.
 
+## Quickstart
+
+```bash
+git clone <repo> && cd argus
+uv sync
+cp .env.example .env   # then fill in keys (see below)
+```
+
+**Skip the deploy — use my hosted Modal endpoint.** The OSS side is already live at the `MODAL_URL` baked into `adapter.py`. You only need:
+
+- `MODAL_API_KEY` — sent in the submission email. If you don't have it, ping me.
+- `OPENROUTER_API_KEY` — your own OpenRouter key for the frontier provider.
+- `SGAI_API_KEY` — your own ScrapeGraphAI key for the `web_search` tool. Tool use still works without it, just won't return results.
+
+**Or, deploy your own OSS endpoint** (only needed if you want a fresh Modal instance under your account):
+
+```bash
+uv run modal deploy -m modal_app
+# copy the printed URL into MODAL_URL in .env
+```
+
+**Use it:**
+
+```bash
+uv run streamlit run app.py             # chat + live risk panel + observability dashboard
+uv run python cli.py --provider modal   # terminal REPL
+```
+
+**Run the eval:**
+
+```bash
+uv run python -m evals.run --validate     # judge-validation gate first (12 synthetic cases)
+uv run python -m evals.run                # full 70-prompt run, ~15-25 min, ~$1.50 in judge cost
+uv run python -m evals.report             # generate charts + summary
+```
+
 ## Repo
 
 ```
@@ -174,5 +199,5 @@ pages/observability.py
 tools/web_search.py
 evals/{prompts,validation,run,report}.py
 report/{eval_report.{md,html,pdf},build_pdf.py}
-eval_report.pdf  (copy at root for easy access)
+eval_report.pdf   (copy at root for easy access)
 ```
