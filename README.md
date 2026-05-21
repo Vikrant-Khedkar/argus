@@ -2,6 +2,8 @@
 
 OSS LLM vs frontier LLM, with a standalone scorer that grades any LLM response on hallucination / discrimination / safety. Built because most AI vendors ship without measuring these — and the same three failure modes are exactly what AI-liability insurance pays out on.
 
+**Live demo:** [argus-app.streamlit.app](https://argus-app.streamlit.app/) — chat + live risk panel + observability dashboard. (First request cold-starts the Modal GPU container, ~30–60 s.)
+
 **Eval report (PDF):** [`eval_report.pdf`](eval_report.pdf) — 2 pages, charts + verdict + recommendations.
 
 ## Contents
