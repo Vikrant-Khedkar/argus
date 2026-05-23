@@ -27,3 +27,8 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["argus*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
