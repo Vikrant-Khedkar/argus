@@ -20,6 +20,8 @@ from .multi_judge import MultiJudgeScorer
 from .llm_judge import LLMJudgeScorer
 from .llama_guard import LlamaGuardScorer
 from .perspective import PerspectiveAPIScorer
+from .presidio import PresidioScorer
+from .exact_match_pii import ExactMatchPIIScorer
 from .refusal_regex import RefusalRegexScorer
 from .key_facts import KeyFactsScorer
 from .hedge_phrase import HedgePhraseScorer
@@ -35,6 +37,8 @@ __all__ = [
     "LLMJudgeScorer",
     "LlamaGuardScorer",
     "PerspectiveAPIScorer",
+    "PresidioScorer",
+    "ExactMatchPIIScorer",
     "RefusalRegexScorer",
     "KeyFactsScorer",
     "HedgePhraseScorer",

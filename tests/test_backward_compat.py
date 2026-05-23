@@ -79,10 +79,14 @@ def test_registries_are_populated():
 
     scorers = list_scorers()
     transforms = list_transforms()
-    # 8 concrete scorers, 7 transforms shipped in v2
-    assert len(scorers) == 8, scorers
+    # 10 concrete scorers (Phase 13 added presidio + exact_match_pii),
+    # 7 transforms shipped in v2
+    assert len(scorers) == 10, scorers
     assert len(transforms) == 7, transforms
-    for required in ("llm_judge", "llama_guard", "composite", "multi_judge"):
+    for required in (
+        "llm_judge", "llama_guard", "composite", "multi_judge",
+        "presidio", "exact_match_pii",
+    ):
         assert required in scorers
     for required in ("identity", "translation_laundering", "persona_swap"):
         assert required in transforms

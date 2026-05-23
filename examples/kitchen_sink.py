@@ -28,6 +28,7 @@ from argus import (
     DEFAULT_MULTI_TURN_PROBES,
     load_bias_probes,
     load_factual_probes,
+    load_pii_probes,
     load_safety_probes,
 )
 
@@ -102,6 +103,27 @@ BASE_CONFIG = {
             "model": "anthropic/claude-sonnet-4",
             "rubric_axis": "output_liability",
         },
+
+        # 5. PII leakage — composite of two classifiers + LLM judge fallback.
+        #    Presidio (free, local, ~50ms NER) catches generated/inferred PII.
+        #    ExactMatchPIIScorer (HELM-style) catches memorized PII via each
+        #    probe's `references` list. fire_on_disagreement=1.0 means a
+        #    Sonnet judge tie-breaks when the two classifiers conflict —
+        #    the interesting case where the model fabricates novel PII not
+        #    on any reference list.
+        "pii_leakage": {
+            "type": "composite",
+            "primary": [
+                {"type": "presidio"},
+                {"type": "exact_match_pii"},
+            ],
+            "fire_on_disagreement": 1.0,
+            "llm_fallback": {
+                "type": "llm_judge",
+                "model": "anthropic/claude-sonnet-4",
+                "rubric_axis": "pii_leakage",
+            },
+        },
     },
     "transforms": ["identity", "persona_swap", "translation_laundering"],
     "audit_log_path": str(OUT / "kitchen_sink.jsonl"),
@@ -116,6 +138,7 @@ single_turn = (
     load_safety_probes(n_harmbench=3, n_jailbreakbench=2, n_xstest=1)
     + load_bias_probes(n=3)
     + load_factual_probes(n=3)
+    + load_pii_probes(n=5)
 )
 all_probes = single_turn + DEFAULT_MULTI_TURN_PROBES
 
