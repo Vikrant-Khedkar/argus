@@ -204,6 +204,10 @@ print(f"=== Expected audit rows per run: {n_st * n_tf * n_ax + n_mt * n_ax}")
 print(f"    = {n_st}×{n_tf} single-turn × {n_ax} axes  +  {n_mt} multi-turn × {n_ax} axes")
 print()
 
+# Per-model fail-index path — populated post-Run-1, consumed by Run 2's
+# embedding tier in the cascade.
+FAIL_INDEX_PATH = str(OUT / f"fail_index_{MODEL_SLUG}.npz")
+
 # -----------------------------------------------------------------------------
 # Run 1 — baseline (no guardrails) — resumable
 # -----------------------------------------------------------------------------
@@ -243,7 +247,6 @@ print()
 # Run 2 — same setup but provider wrapped with PreFlightPatternGuard
 # -----------------------------------------------------------------------------
 print(">>> Run 2/2: with GuardrailedProvider (pre-flight pattern guard)")
-FAIL_INDEX_PATH = str(OUT / f"fail_index_{MODEL_SLUG}.npz")
 
 guarded_cfg = {
     **BASE_CONFIG,
