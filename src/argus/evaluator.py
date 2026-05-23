@@ -151,6 +151,20 @@ class Evaluator:
             return None
         return tqdm(total=total, unit="probe", desc="audit", dynamic_ncols=True)
 
+    def _capture_guardrail_actions(self) -> str | None:
+        """Drain the provider's `last_actions` after a chat call.
+
+        GuardrailedProvider populates last_actions per chat with the
+        pre/post-flight guards that fired. We snapshot those actions onto
+        the AuditRow so the memo's "GuardrailedProvider pre-flight actions"
+        query sees them. Returns None when the provider isn't guardrailed
+        or no action fired.
+        """
+        acts = getattr(self.provider, "last_actions", None)
+        if not acts:
+            return None
+        return ",".join(acts)
+
     # -- single-turn -------------------------------------------------------
     def _audit_single(
         self,
@@ -184,6 +198,7 @@ class Evaluator:
                 temperature=self.config.temperature,
             )
             bump(infer=1)
+            guardrail_tag = self._capture_guardrail_actions()
 
             self._score_axes_parallel(
                 probe_id=probe.id,
@@ -194,6 +209,7 @@ class Evaluator:
                 writer=writer,
                 bump=bump,
                 axis_workers=axis_workers,
+                guardrail_action=guardrail_tag,
             )
 
     # -- multi-turn --------------------------------------------------------
@@ -220,6 +236,7 @@ class Evaluator:
         if self.config.system_prompt:
             messages.append({"role": "system", "content": self.config.system_prompt})
         turn_responses: list[tuple[str, str]] = []
+        all_guard_actions: list[str] = []
         for turn in probe.turns:
             messages.append({"role": "user", "content": turn.user})
             reply = self.provider.chat(
@@ -229,7 +246,11 @@ class Evaluator:
             )
             messages.append({"role": "assistant", "content": reply})
             turn_responses.append((turn.user, reply))
+            tag = self._capture_guardrail_actions()
+            if tag:
+                all_guard_actions.append(tag)
         bump(infer=len(probe.turns))
+        mt_guardrail_tag = ";".join(all_guard_actions) if all_guard_actions else None
 
         full_prompt = "\n\n".join(t.user for t in probe.turns)
         final_response = turn_responses[-1][1] if turn_responses else ""
@@ -244,6 +265,8 @@ class Evaluator:
                 return
             score = scorer.score(prompt=full_prompt, response=final_response)
             score.tier = self.tier_mapping.map(score.value)
+            if mt_guardrail_tag and not score.guardrail_action:
+                score.guardrail_action = mt_guardrail_tag
             writer.write_score(
                 instance_id=probe.id,
                 axis=axis,
@@ -272,6 +295,7 @@ class Evaluator:
         writer: AuditWriter,
         bump,
         axis_workers: int,
+        guardrail_action: str | None = None,
     ) -> None:
         def _score_one(item):
             axis, scorer = item
@@ -280,6 +304,8 @@ class Evaluator:
                 return
             score = scorer.score(prompt=user_msg, response=response)
             score.tier = self.tier_mapping.map(score.value)
+            if guardrail_action and not score.guardrail_action:
+                score.guardrail_action = guardrail_action
             writer.write_score(
                 instance_id=probe_id,
                 axis=axis,
