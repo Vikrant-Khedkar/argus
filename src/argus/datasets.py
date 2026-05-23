@@ -143,7 +143,7 @@ _FALLBACK_CALIBRATION = [
 # ---------------------------------------------------------------------------
 
 
-_DEFAULT_HF_TIMEOUT_S = float(os.getenv("ARGUS_HF_TIMEOUT_S", "30"))
+_DEFAULT_HF_TIMEOUT_S = float(os.getenv("ARGUS_HF_TIMEOUT_S", "120"))
 
 
 def _safe_load(*args, **kwargs):
