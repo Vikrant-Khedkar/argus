@@ -232,7 +232,9 @@ guarded_cfg = {
     **BASE_CONFIG,
     "provider": {
         **BASE_CONFIG["provider"],
-        "guardrail": {"pre_flight": ["pattern"]},
+        # Cascade: regex (instant, free) -> Llama-Prompt-Guard-2 (86M
+        # classifier, ~$0.0001/call, catches paraphrases regex misses)
+        "guardrail": {"pre_flight": ["pattern", "prompt_guard"]},
     },
 }
 report_g = Evaluator(EvalConfig.from_dict(guarded_cfg)).audit(

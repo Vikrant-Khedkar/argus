@@ -16,6 +16,7 @@ from .providers import (
 )
 from .guardrails import (
     PreFlightPatternGuard,
+    PreFlightClassifierGuard,
     PostFlightRegenGuard,
     PostFlightHardRefuseGuard,
 )
@@ -91,6 +92,7 @@ from .scorers import (
     MultiJudgeScorer,
     LLMJudgeScorer,
     LlamaGuardScorer,
+    LlamaPromptGuardScorer,
     PerspectiveAPIScorer,
     PresidioScorer,
     ExactMatchPIIScorer,
@@ -113,6 +115,7 @@ __all__ = [
     "GuardrailedProvider",
     # Guardrails
     "PreFlightPatternGuard",
+    "PreFlightClassifierGuard",
     "PostFlightRegenGuard",
     "PostFlightHardRefuseGuard",
     # v1 legacy
@@ -153,6 +156,7 @@ __all__ = [
     "MultiJudgeScorer",
     "LLMJudgeScorer",
     "LlamaGuardScorer",
+    "LlamaPromptGuardScorer",
     "PerspectiveAPIScorer",
     "PresidioScorer",
     "ExactMatchPIIScorer",

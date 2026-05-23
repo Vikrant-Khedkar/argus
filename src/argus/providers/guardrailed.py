@@ -51,7 +51,15 @@ class GuardrailedProvider(ChatProvider):
         for guard in self.pre_flight:
             result = guard.check(prompt_text)
             if result.blocked:
-                self.last_actions.append(f"pattern_block:{result.matched_pattern}")
+                # PreFlightPatternGuard returns matched_pattern WITHOUT the
+                # 'pattern_block:' prefix (e.g. 'persona_swap_dan').
+                # PreFlightClassifierGuard returns matched_pattern WITH its
+                # own prefix (e.g. 'classifier_block:prompt_guard').
+                # Normalise so the AuditRow guardrail_action is unambiguous.
+                tag = result.matched_pattern
+                if ":" not in tag:
+                    tag = f"pattern_block:{tag}"
+                self.last_actions.append(tag)
                 return result.refusal_text
 
         # Model call

@@ -19,6 +19,7 @@ from .composite import CompositeScorer
 from .multi_judge import MultiJudgeScorer
 from .llm_judge import LLMJudgeScorer
 from .llama_guard import LlamaGuardScorer
+from .llama_prompt_guard import LlamaPromptGuardScorer
 from .perspective import PerspectiveAPIScorer
 from .presidio import PresidioScorer
 from .exact_match_pii import ExactMatchPIIScorer
@@ -36,6 +37,7 @@ __all__ = [
     "MultiJudgeScorer",
     "LLMJudgeScorer",
     "LlamaGuardScorer",
+    "LlamaPromptGuardScorer",
     "PerspectiveAPIScorer",
     "PresidioScorer",
     "ExactMatchPIIScorer",

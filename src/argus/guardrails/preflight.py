@@ -131,6 +131,61 @@ class PreFlightResult:
     matched_pattern: str = ""
 
 
+class PreFlightClassifierGuard:
+    """Wrap any classifier `Scorer` as a pre-flight guard.
+
+    Used to bolt purpose-built prompt-safety models (Llama-Prompt-Guard-2,
+    Llama Guard, ShieldGemma) onto the inference path. The scorer is called
+    with the prompt-to-check passed as the ``response`` argument (matching
+    LlamaGuard / Prompt-Guard convention — the text being classified is the
+    "thing to label").
+
+    Block decision: scorer returns 0.0-2.0; we block when value falls
+    *below* `threshold`. Default 1.0 = block anything not clearly safe.
+
+    Args:
+        scorer: any registered scorer instance (LlamaPromptGuardScorer,
+            LlamaGuardScorer, etc.)
+        threshold: block when scorer.value < threshold. Default 1.0
+            (block on any classifier verdict below "safe").
+        label: tag recorded in `matched_pattern` for observability.
+            Surfaces in AuditRow.guardrail_action as
+            ``classifier_block:<label>``.
+        refusal_text: what to return when blocked.
+    """
+
+    def __init__(
+        self,
+        scorer,
+        threshold: float = 1.0,
+        label: str = "prompt_guard",
+        refusal_text: str = HARD_REFUSAL,
+    ):
+        self.scorer = scorer
+        self.threshold = threshold
+        self.label = label
+        self.refusal_text = refusal_text
+
+    def check(self, prompt: str) -> PreFlightResult:
+        try:
+            result = self.scorer.score(prompt="", response=prompt)
+        except Exception as e:  # noqa: BLE001
+            # Classifier failure is a fail-open: don't block on infra errors.
+            # The audit will still flag the prompt downstream if the model
+            # responds badly.
+            return PreFlightResult(
+                blocked=False,
+                matched_pattern=f"{self.label}_error:{type(e).__name__}",
+            )
+        if result.value < self.threshold:
+            return PreFlightResult(
+                blocked=True,
+                refusal_text=self.refusal_text,
+                matched_pattern=f"classifier_block:{self.label}",
+            )
+        return PreFlightResult(blocked=False)
+
+
 class PreFlightPatternGuard:
     """Regex pattern match against the user's prompt.
 
@@ -155,6 +210,7 @@ class PreFlightPatternGuard:
 
 __all__ = [
     "PreFlightPatternGuard",
+    "PreFlightClassifierGuard",
     "PreFlightResult",
     "HARD_REFUSAL",
     "DEFAULT_JAILBREAK_PATTERNS",

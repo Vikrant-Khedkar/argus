@@ -11,11 +11,12 @@ Post-flight runs after the model call:
   refusal string when a critical axis fails.
 """
 
-from .preflight import PreFlightPatternGuard
+from .preflight import PreFlightPatternGuard, PreFlightClassifierGuard
 from .postflight import PostFlightRegenGuard, PostFlightHardRefuseGuard
 
 __all__ = [
     "PreFlightPatternGuard",
+    "PreFlightClassifierGuard",
     "PostFlightRegenGuard",
     "PostFlightHardRefuseGuard",
 ]

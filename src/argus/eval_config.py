@@ -51,7 +51,7 @@ import yaml
 
 from .providers.base import ChatProvider, get_provider
 from .providers.guardrailed import GuardrailedProvider
-from .guardrails.preflight import PreFlightPatternGuard
+from .guardrails.preflight import PreFlightPatternGuard, PreFlightClassifierGuard
 from .scorers.base import Scorer, get_scorer_class
 from .scorers.composite import CompositeScorer
 from .scorers.multi_judge import MultiJudgeScorer
@@ -121,13 +121,69 @@ class EvalConfig:
         inner = get_provider(name, **kwargs)
         guardrail = spec.get("guardrail")
         if guardrail:
-            pre = []
-            for g in guardrail.get("pre_flight", []):
-                if g in ("pattern", "pattern_guard"):
-                    pre.append(PreFlightPatternGuard())
+            pre = self._build_pre_flight_guards(guardrail.get("pre_flight", []))
             # post-flight guards are scorer-driven; not auto-built here
             return GuardrailedProvider(inner=inner, pre_flight=pre)
         return inner
+
+    @staticmethod
+    def _build_pre_flight_guards(specs: list) -> list:
+        """Each entry is either a string shortcut or a dict with classifier
+        kwargs. Shortcuts:
+
+          "pattern" / "pattern_guard"  ->  PreFlightPatternGuard()
+          "prompt_guard"               ->  PreFlightClassifierGuard with
+                                           LlamaPromptGuardScorer (default)
+          "guard"                      ->  PreFlightClassifierGuard with
+                                           LlamaGuardScorer (broader, slower)
+
+        Dict form (full control):
+          {type: classifier, scorer: prompt_guard,
+           model: meta-llama/llama-prompt-guard-2-86m, threshold: 1.0}
+        """
+        from .scorers.llama_prompt_guard import LlamaPromptGuardScorer
+        from .scorers.llama_guard import LlamaGuardScorer
+
+        out = []
+        for entry in specs:
+            if isinstance(entry, str):
+                if entry in ("pattern", "pattern_guard"):
+                    out.append(PreFlightPatternGuard())
+                elif entry == "prompt_guard":
+                    out.append(PreFlightClassifierGuard(
+                        scorer=LlamaPromptGuardScorer(),
+                        label="prompt_guard",
+                    ))
+                elif entry == "guard":
+                    out.append(PreFlightClassifierGuard(
+                        scorer=LlamaGuardScorer(),
+                        label="llama_guard",
+                    ))
+            elif isinstance(entry, dict):
+                kind = entry.get("type", "classifier")
+                if kind == "pattern":
+                    out.append(PreFlightPatternGuard())
+                    continue
+                scorer_kind = entry.get("scorer", "prompt_guard")
+                model = entry.get("model")
+                if scorer_kind == "prompt_guard":
+                    scorer_kwargs = {"model": model} if model else {}
+                    scorer = LlamaPromptGuardScorer(**scorer_kwargs)
+                    default_label = "prompt_guard"
+                elif scorer_kind == "guard" or scorer_kind == "llama_guard":
+                    scorer_kwargs = {"model": model} if model else {}
+                    scorer = LlamaGuardScorer(**scorer_kwargs)
+                    default_label = "llama_guard"
+                else:
+                    cls = get_scorer_class(scorer_kind)
+                    scorer = cls(**({"model": model} if model else {}))
+                    default_label = scorer_kind
+                out.append(PreFlightClassifierGuard(
+                    scorer=scorer,
+                    threshold=float(entry.get("threshold", 1.0)),
+                    label=entry.get("label", default_label),
+                ))
+        return out
 
     def build_tier_mapping(self) -> TierMapping:
         spec = self.tier_mapping
