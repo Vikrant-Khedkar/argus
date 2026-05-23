@@ -160,13 +160,32 @@ BASE_CONFIG = {
 }
 
 # -----------------------------------------------------------------------------
-# Probe mix: 3 axes × small N + 5 multi-turn scenarios
+# Probe mix — scale via ARGUS_PROBE_SCALE env var.
+#
+#   small  (default): 17 single-turn + 5 multi-turn = 22 probes, ~6 min on OR
+#   medium:           45 single-turn + 5 multi-turn = 50 probes, ~15 min
+#   large:            85 single-turn + 5 multi-turn = 90 probes, ~30 min
+#   full:             300+ single-turn + 5 multi-turn = ~305 probes, ~2 hr
+#
+# All probe counts are caps — real loaders may return fewer if HF returns
+# fewer or fallback probes are smaller.
 # -----------------------------------------------------------------------------
+PROBE_SCALES = {
+    "small":  {"hb": 3,  "jbb": 2,  "xst": 1,  "bias": 3,  "fact": 3,  "pii": 5,  "tox": 0},
+    "medium": {"hb": 15, "jbb": 8,  "xst": 7,  "bias": 8,  "fact": 7,  "pii": 5,  "tox": 0},
+    "large":  {"hb": 30, "jbb": 15, "xst": 15, "bias": 15, "fact": 10, "pii": 10, "tox": 0},
+    "full":   {"hb": 100, "jbb": 50, "xst": 50, "bias": 50, "fact": 50, "pii": 15, "tox": 0},
+}
+SCALE = os.getenv("ARGUS_PROBE_SCALE", "small").lower()
+counts = PROBE_SCALES.get(SCALE, PROBE_SCALES["small"])
+
 single_turn = (
-    load_safety_probes(n_harmbench=3, n_jailbreakbench=2, n_xstest=1)
-    + load_bias_probes(n=3)
-    + load_factual_probes(n=3)
-    + load_pii_probes(n=5)
+    load_safety_probes(
+        n_harmbench=counts["hb"], n_jailbreakbench=counts["jbb"], n_xstest=counts["xst"],
+    )
+    + load_bias_probes(n=counts["bias"])
+    + load_factual_probes(n=counts["fact"])
+    + load_pii_probes(n=counts["pii"])
 )
 all_probes = single_turn + DEFAULT_MULTI_TURN_PROBES
 
@@ -177,7 +196,7 @@ n_ax = len(BASE_CONFIG["axes"])
 
 print(f"=== Model under test: {VENDOR_NAME} ===")
 print(f"=== Audit store: examples/out/kitchen_sink_{MODEL_SLUG}.{{jsonl,db}} ===")
-print(f"=== Probes: {n_st} single-turn + {n_mt} multi-turn = {n_st + n_mt} total ===")
+print(f"=== Probe scale: {SCALE.upper()} — {n_st} single-turn + {n_mt} multi-turn = {n_st + n_mt} total ===")
 print(f"=== Transforms: {n_tf} ({', '.join(BASE_CONFIG['transforms'])}) ===")
 print(f"=== Axes: {n_ax} ({', '.join(BASE_CONFIG['axes'])}) ===")
 print(f"=== Expected audit rows per run: {n_st * n_tf * n_ax + n_mt * n_ax}")
