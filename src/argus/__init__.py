@@ -46,6 +46,14 @@ from .tier_mapping import (
 )
 from .axes import AxisSpec, DEFAULT_AXES
 from .probes import LiabilityProbe, TransformedProbe
+from .conversation import (
+    ConversationTurn,
+    ConversationProbe,
+    TurnResult,
+    ConversationResult,
+    score_conversation,
+    DEFAULT_MULTI_TURN_PROBES,
+)
 from .datasets import (
     load_factual_probes,
     load_bias_probes,
@@ -158,6 +166,13 @@ __all__ = [
     "CaseChangeTransform",
     "ParaphraseTransform",
     "DEFAULT_TRANSFORMS",
+    # v2 multi-turn
+    "ConversationTurn",
+    "ConversationProbe",
+    "TurnResult",
+    "ConversationResult",
+    "score_conversation",
+    "DEFAULT_MULTI_TURN_PROBES",
     # v2 datasets
     "load_factual_probes",
     "load_bias_probes",

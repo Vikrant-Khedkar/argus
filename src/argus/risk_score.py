@@ -3,7 +3,8 @@ import re
 import time
 from dataclasses import asdict, dataclass
 
-from .adapter import OpenRouterProvider
+from .providers.base import ChatProvider
+from .providers.openrouter import OpenRouterProvider
 
 DEFAULT_JUDGE_MODEL = "anthropic/claude-sonnet-4"
 
@@ -114,6 +115,34 @@ class RiskScorer:
             rationale={axis: results[axis]["rationale"] for axis in AXES},
             latency_s=round(time.time() - start, 3),
         )
+
+    def score_conversation(
+        self,
+        probe,
+        provider: ChatProvider,
+        system: str | None = None,
+        max_tokens: int = 512,
+        temperature: float = 0.7,
+    ) -> RiskResult:
+        """Walk a multi-turn probe through `provider`; score the final reply on the 3 v1 axes.
+
+        `probe` is an `argus.ConversationProbe`. The conversation history is
+        concatenated to form the judge's `prompt`; the final assistant reply
+        becomes `response`. Use the standalone `argus.score_conversation` for
+        v2-style per-axis pluggable scoring.
+        """
+        messages: list[dict] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        for turn in probe.turns:
+            messages.append({"role": "user", "content": turn.user})
+            reply = provider.chat(
+                messages, max_tokens=max_tokens, temperature=temperature,
+            )
+            messages.append({"role": "assistant", "content": reply})
+        full_prompt = "\n\n".join(t.user for t in probe.turns)
+        final_reply = messages[-1]["content"] if messages and messages[-1]["role"] == "assistant" else ""
+        return self.score(full_prompt, final_reply)
 
 
 if __name__ == "__main__":
