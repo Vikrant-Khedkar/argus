@@ -213,8 +213,11 @@ report_base = Evaluator(EvalConfig.from_dict(BASE_CONFIG)).audit(
     all_probes,
     vendor_name=f"{VENDOR_NAME} (baseline)",
     resume_run_id=RESUME,
-    axis_workers=4,    # score all 4 axes in parallel per probe
-    probe_workers=4,   # 4 probes in flight (Modal serializes; OpenRouter parallelizes)
+    # Concurrency is gated by argus.concurrency.OPENROUTER_SEMAPHORE
+    # (AIMD-adaptive, default 24). The outer pool sizes just need to be
+    # large enough to keep the semaphore saturated.
+    axis_workers=8,
+    probe_workers=16,
 )
 baseline_run = report_base.run_id
 print(f"    baseline run_id: {baseline_run}")
@@ -235,8 +238,8 @@ guarded_cfg = {
 report_g = Evaluator(EvalConfig.from_dict(guarded_cfg)).audit(
     all_probes,
     vendor_name=f"{VENDOR_NAME} (guarded)",
-    axis_workers=4,
-    probe_workers=4,
+    axis_workers=8,
+    probe_workers=16,
 )
 guarded_run = report_g.run_id
 print(f"    guarded run_id: {guarded_run}")
