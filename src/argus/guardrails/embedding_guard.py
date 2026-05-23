@@ -244,13 +244,20 @@ class PreFlightEmbeddingGuard:
         max_sim, mean_sim, neighbours = self.fail_index.topk_similarity(
             vec, k=self.top_k,
         )
-        # Use top-k mean (Rebuff's approach) — robust to one outlier.
-        if mean_sim >= self.threshold:
+        # Block on EITHER nearest-neighbour similarity OR top-k mean
+        # (whichever crosses the threshold first). max_sim catches the
+        # "this is essentially a known exploit" case even when the index is
+        # too small for the top-k mean to be meaningful. mean_sim catches
+        # the "lots of attacks in the index resemble this" case once the
+        # index has matured (>50 entries).
+        if max_sim >= self.threshold or mean_sim >= self.threshold:
             nn_id = neighbours[0][0].get("id", "?") if neighbours else "?"
             return PreFlightResult(
                 blocked=True,
                 refusal_text=self.refusal_text,
-                matched_pattern=f"embedding_block:{self.label}:nn={nn_id}",
+                matched_pattern=(
+                    f"embedding_block:{self.label}:nn={nn_id},sim={max_sim:.2f}"
+                ),
             )
         return PreFlightResult(blocked=False)
 
