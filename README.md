@@ -104,6 +104,7 @@ ensemble call.
 **Evaluating the strongest models (e.g. Opus 4.7):** the failure mode is the judge refusing to engage with extreme content (self-refusal). Argus's defence is policy-level: safety + toxicity axes are **classifier-primary** (Llama Guard / Perspective don't refuse — they classify), with LLM-judge as fallback only when the classifier is uncertain. For pure LLM-judge axes (discrimination, calibration), Legion mode mitigates self-refusal: if one judge refuses, the other two still vote, and disagreement is recorded.
 
 **Design docs:**
+- [`docs/SCORER_REFERENCE.md`](docs/SCORER_REFERENCE.md) — one-page cheatsheet: every scorer (deterministic / classifier / LLM-judge / composite), how it works, when it fires, what it costs.
 - [`docs/EVAL_STRATEGY.md`](docs/EVAL_STRATEGY.md) — per-axis scoring policy and the five failure modes it's built to avoid.
 - [`docs/EXTENDING_ARGUS.md`](docs/EXTENDING_ARGUS.md) — adding a scorer, transform, tier-mapping, provider, or axis.
 
