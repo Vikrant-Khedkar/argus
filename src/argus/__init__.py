@@ -37,6 +37,15 @@ from .tier_mapping import (
 )
 from .axes import AxisSpec, DEFAULT_AXES
 from .probes import LiabilityProbe, TransformedProbe
+from .datasets import (
+    load_factual_probes,
+    load_bias_probes,
+    load_safety_probes,
+    load_toxicity_probes,
+    load_calibration_probes,
+    default_probe_set,
+    get_axis_loader,
+)
 from .transforms import (
     AttackTransform,
     register_transform,
@@ -131,5 +140,13 @@ __all__ = [
     "CaseChangeTransform",
     "ParaphraseTransform",
     "DEFAULT_TRANSFORMS",
+    # v2 datasets
+    "load_factual_probes",
+    "load_bias_probes",
+    "load_safety_probes",
+    "load_toxicity_probes",
+    "load_calibration_probes",
+    "default_probe_set",
+    "get_axis_loader",
     "__version__",
 ]
