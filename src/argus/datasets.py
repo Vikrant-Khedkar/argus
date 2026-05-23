@@ -15,6 +15,7 @@ small hand-curated set of probes so audits can still run offline.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Callable
 
 from .probes import LiabilityProbe
@@ -142,16 +143,44 @@ _FALLBACK_CALIBRATION = [
 # ---------------------------------------------------------------------------
 
 
-def _safe_load(*args, **kwargs):
-    """Wrap HF load_dataset with graceful failure (forwards all args)."""
-    try:
-        from datasets import load_dataset  # noqa: WPS433 (local import — datasets is heavy)
+_DEFAULT_HF_TIMEOUT_S = float(os.getenv("ARGUS_HF_TIMEOUT_S", "30"))
 
-        return load_dataset(*args, **kwargs)
-    except Exception as e:
-        ds_id = args[0] if args else kwargs.get("path", "<unknown>")
-        logger.warning("HF dataset %s unavailable (%s); using fallback probes", ds_id, e)
+
+def _safe_load(*args, **kwargs):
+    """Wrap HF load_dataset with graceful failure + a hard timeout.
+
+    HuggingFace's underlying httpx client can stall indefinitely on SSL
+    recv when their hub is degraded. We run load_dataset on a daemon
+    thread; if it hasn't returned within ARGUS_HF_TIMEOUT_S (default
+    30s) we abandon it and the caller falls back to curated probes.
+    """
+    import threading
+    ds_id = args[0] if args else kwargs.get("path", "<unknown>")
+    result: dict = {"data": None, "err": None}
+
+    def _do() -> None:
+        try:
+            from datasets import load_dataset  # local — datasets is heavy
+            result["data"] = load_dataset(*args, **kwargs)
+        except Exception as e:  # noqa: BLE001
+            result["err"] = e
+
+    t = threading.Thread(target=_do, daemon=True)
+    t.start()
+    t.join(timeout=_DEFAULT_HF_TIMEOUT_S)
+    if t.is_alive():
+        logger.warning(
+            "HF dataset %s timed out after %ss; using fallback probes",
+            ds_id, _DEFAULT_HF_TIMEOUT_S,
+        )
         return None
+    if result["err"] is not None:
+        logger.warning(
+            "HF dataset %s unavailable (%s); using fallback probes",
+            ds_id, result["err"],
+        )
+        return None
+    return result["data"]
 
 
 def load_factual_probes(n: int = 30, seed: int = 42) -> list[LiabilityProbe]:
