@@ -16,9 +16,15 @@ MODAL_URL_DEFAULT = (
 class ModalProvider(ChatProvider):
     name = "modal"
 
-    def __init__(self, url: str | None = None, api_key: str | None = None):
+    def __init__(
+        self,
+        url: str | None = None,
+        api_key: str | None = None,
+        model: str = "Qwen2.5-1.5B-Instruct",
+    ):
         self.url = url or os.getenv("MODAL_URL", MODAL_URL_DEFAULT)
         self.api_key = api_key or os.getenv("MODAL_API_KEY")
+        self.model = model
 
     def chat(self, messages, max_tokens=512, temperature=0.7):
         headers = {}

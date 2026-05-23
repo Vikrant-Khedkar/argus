@@ -91,6 +91,7 @@ class Evaluator:
         if resume_run_id and writer.done_count():
             print(f"[resume] {run_id} — {writer.done_count()} rows already complete, skipping those")
 
+        model_id = self._safe_model_under_test()
         stats = {"infer": 0, "score": 0, "skip": 0, "rows": 0, "t0": time.time()}
         stats_lock = threading.Lock()
         bar = self._make_bar(len(probes), progress)
@@ -103,9 +104,9 @@ class Evaluator:
 
         def process(probe) -> None:
             if isinstance(probe, ConversationProbe):
-                self._audit_conversation(probe, writer, _bump, axis_workers)
+                self._audit_conversation(probe, writer, _bump, axis_workers, model_id)
             else:
-                self._audit_single(probe, writer, _bump, axis_workers)
+                self._audit_single(probe, writer, _bump, axis_workers, model_id)
             if bar is not None:
                 with bar_lock:
                     bar.set_postfix(
@@ -165,6 +166,21 @@ class Evaluator:
             return None
         return ",".join(acts)
 
+    def _safe_model_under_test(self) -> str | None:
+        """Best-effort identity of the model being audited.
+
+        Recorded on every AuditRow so the web view can group / compare by
+        model. Falls back to the provider's class name when the provider
+        doesn't expose model_under_test().
+        """
+        get = getattr(self.provider, "model_under_test", None)
+        if callable(get):
+            try:
+                return get()
+            except Exception:  # noqa: BLE001
+                return self.provider.__class__.__name__
+        return self.provider.__class__.__name__
+
     # -- single-turn -------------------------------------------------------
     def _audit_single(
         self,
@@ -172,6 +188,7 @@ class Evaluator:
         writer: AuditWriter,
         bump,
         axis_workers: int,
+        model_under_test: str | None = None,
     ) -> None:
         for transform in self.transforms:
             transform_tag = transform.name if transform.name != "identity" else None
@@ -210,6 +227,7 @@ class Evaluator:
                 bump=bump,
                 axis_workers=axis_workers,
                 guardrail_action=guardrail_tag,
+                model_under_test=model_under_test,
             )
 
     # -- multi-turn --------------------------------------------------------
@@ -219,6 +237,7 @@ class Evaluator:
         writer: AuditWriter,
         bump,
         axis_workers: int,
+        model_under_test: str | None = None,
     ) -> None:
         # All-axes-already-done short-circuit (no inference at all)
         if all(
@@ -274,6 +293,7 @@ class Evaluator:
                 response=final_response,
                 score=score,
                 multi_turn=True,
+                model_under_test=model_under_test,
             )
             bump(score=1, rows=1)
 
@@ -296,6 +316,7 @@ class Evaluator:
         bump,
         axis_workers: int,
         guardrail_action: str | None = None,
+        model_under_test: str | None = None,
     ) -> None:
         def _score_one(item):
             axis, scorer = item
@@ -314,6 +335,7 @@ class Evaluator:
                 score=score,
                 attack_transform=transform_tag,
                 multi_turn=multi_turn,
+                model_under_test=model_under_test,
             )
             bump(score=1, rows=1)
 

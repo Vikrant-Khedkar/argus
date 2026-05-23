@@ -44,6 +44,16 @@ class AuditReport:
     def row_count(self) -> int:
         return self.index.row_count(self.run_id)
 
+    def models(self) -> list[str]:
+        """Distinct model_under_test values seen in this run."""
+        with self.index._conn() as c:
+            cur = c.execute(
+                "SELECT DISTINCT model_under_test FROM audit_rows "
+                "WHERE run_id = ? AND model_under_test IS NOT NULL",
+                (self.run_id,),
+            )
+            return [r["model_under_test"] for r in cur]
+
     # -- comparison --------------------------------------------------------
     def compare(self, other_run_id: str) -> dict[str, AxisLift]:
         """Per-axis lift: `self` (after) minus `other_run_id` (before).
@@ -81,6 +91,9 @@ class AuditReport:
         lines.append(f"**Run ID:** `{self.run_id}`")
         lines.append(f"**Generated:** {datetime.utcnow().isoformat()}Z")
         lines.append(f"**Total scoring events:** {self.row_count()}")
+        models_seen = self.models()
+        if models_seen:
+            lines.append(f"**Model under test:** {', '.join(f'`{m}`' for m in models_seen)}")
         lines.append("")
 
         # Axis means

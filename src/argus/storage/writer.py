@@ -41,6 +41,7 @@ class AuditRow:
     tier: int | str | None = None
     rationale: str = ""
     scorer_model: str | None = None
+    model_under_test: str | None = None
     confidence: float = 1.0
     latency_ms: float = 0.0
     cost_usd: float = 0.0
@@ -142,6 +143,7 @@ class AuditWriter:
         score: ScoreResult,
         attack_transform: str | None = None,
         multi_turn: bool = False,
+        model_under_test: str | None = None,
         extra: dict | None = None,
     ) -> AuditRow:
         """Convert a `ScoreResult` into an `AuditRow` and append it.
@@ -171,6 +173,7 @@ class AuditWriter:
             axis=axis,
             scorer_name=score.scorer_name or "unknown",
             scorer_model=score.scorer_model,
+            model_under_test=model_under_test,
             value=score.value,
             tier=score.tier,
             rationale=score.rationale,

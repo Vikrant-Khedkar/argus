@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS audit_rows (
     axis            TEXT    NOT NULL,
     scorer_name     TEXT    NOT NULL,
     scorer_model    TEXT,
+    model_under_test TEXT,
     value           REAL    NOT NULL,
     tier            TEXT,
     rationale       TEXT,
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS audit_rows (
 CREATE INDEX IF NOT EXISTS idx_run_axis ON audit_rows (run_id, axis);
 CREATE INDEX IF NOT EXISTS idx_instance ON audit_rows (instance_id);
 CREATE INDEX IF NOT EXISTS idx_scorer   ON audit_rows (scorer_name);
+CREATE INDEX IF NOT EXISTS idx_model    ON audit_rows (model_under_test);
 """
 
 
@@ -50,6 +52,7 @@ class AuditIndex:
 
     _EXPECTED_COLS = {
         "run_id", "instance_id", "axis", "scorer_name", "scorer_model",
+        "model_under_test",
         "value", "tier", "rationale", "confidence", "latency_ms",
         "cost_usd", "prompt", "response", "fallback_fired", "aggregator",
         "disagreement", "guardrail_action", "attack_transform",
@@ -105,16 +108,18 @@ class AuditIndex:
                 c.execute(
                     """INSERT INTO audit_rows (
                         run_id, instance_id, axis, scorer_name, scorer_model,
+                        model_under_test,
                         value, tier, rationale, confidence, latency_ms, cost_usd,
                         prompt, response, fallback_fired, aggregator, disagreement,
                         guardrail_action, attack_transform, multi_turn, timestamp, extra
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         row.get("run_id"),
                         row.get("instance_id"),
                         row.get("axis"),
                         row.get("scorer_name"),
                         row.get("scorer_model"),
+                        row.get("model_under_test"),
                         row.get("value"),
                         None if row.get("tier") is None else str(row.get("tier")),
                         row.get("rationale"),
@@ -174,6 +179,37 @@ class AuditIndex:
                 (run_id, threshold, limit),
             )
             return [dict(r) for r in cur]
+
+    def models(self) -> list[str]:
+        """Distinct model_under_test values seen in the index."""
+        with self._conn() as c:
+            cur = c.execute(
+                "SELECT DISTINCT model_under_test FROM audit_rows "
+                "WHERE model_under_test IS NOT NULL ORDER BY model_under_test"
+            )
+            return [r["model_under_test"] for r in cur]
+
+    def axis_means_by_model(self) -> dict[str, dict[str, float]]:
+        """Per-model, per-axis mean — the cross-vendor leaderboard view."""
+        with self._conn() as c:
+            cur = c.execute(
+                "SELECT model_under_test, axis, AVG(value) AS mean FROM audit_rows "
+                "WHERE model_under_test IS NOT NULL GROUP BY model_under_test, axis"
+            )
+            out: dict[str, dict[str, float]] = {}
+            for r in cur:
+                out.setdefault(r["model_under_test"], {})[r["axis"]] = r["mean"]
+            return out
+
+    def runs_for_model(self, model_under_test: str) -> list[str]:
+        """All run_ids that audited this model, newest first."""
+        with self._conn() as c:
+            cur = c.execute(
+                "SELECT DISTINCT run_id FROM audit_rows "
+                "WHERE model_under_test = ? ORDER BY run_id DESC",
+                (model_under_test,),
+            )
+            return [r["run_id"] for r in cur]
 
     def row_count(self, run_id: str | None = None) -> int:
         with self._conn() as c:

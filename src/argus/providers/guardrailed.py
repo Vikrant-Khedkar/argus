@@ -39,6 +39,10 @@ class GuardrailedProvider(ChatProvider):
         self.post_flight = post_flight or []
         self.last_actions: list[str] = []
 
+    def model_under_test(self) -> str:
+        """The wrapped model — the GuardrailedProvider isn't a model itself."""
+        return self.inner.model_under_test()
+
     def chat(self, messages, max_tokens=512, temperature=0.7):
         self.last_actions = []
         prompt_text = self._extract_user_prompt(messages)

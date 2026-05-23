@@ -28,6 +28,16 @@ class ChatProvider(ABC):
         temperature: float = 0.7,
     ) -> str: ...
 
+    def model_under_test(self) -> str:
+        """Stable identifier for the model this provider serves.
+
+        Recorded on every AuditRow so reviewers can filter / group results
+        by which model was actually audited. Subclasses that wrap a known
+        model id should override to return ``<provider>:<model>``.
+        """
+        model = getattr(self, "model", None)
+        return f"{self.name}:{model}" if model else self.name
+
 
 ProviderName = Literal["modal", "openrouter", "http", "huggingface"]
 
