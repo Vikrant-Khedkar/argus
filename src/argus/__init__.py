@@ -55,6 +55,8 @@ from .conversation import (
     DEFAULT_MULTI_TURN_PROBES,
 )
 from .storage import AuditWriter, AuditRow, AuditIndex, AuditReport
+from .eval_config import EvalConfig
+from .evaluator import Evaluator
 from .datasets import (
     load_factual_probes,
     load_bias_probes,
@@ -179,6 +181,9 @@ __all__ = [
     "AuditRow",
     "AuditIndex",
     "AuditReport",
+    # v2 orchestration
+    "EvalConfig",
+    "Evaluator",
     # v2 datasets
     "load_factual_probes",
     "load_bias_probes",
