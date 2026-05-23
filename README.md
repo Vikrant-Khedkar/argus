@@ -6,6 +6,91 @@ OSS LLM vs frontier LLM, with a standalone scorer that grades any LLM response o
 
 **Eval report (PDF):** [`eval_report.pdf`](eval_report.pdf) — 2 pages, charts + verdict + recommendations.
 
+## v2 — Argus SDK
+
+After the v1 submission, the follow-ups were: study HELM, make this pluggable as an SDK, improve guardrails, add multi-turn + multi-judge, and explain how to evaluate against the strongest models. v2 delivers all of that as `pip install -e .` ready code.
+
+**What's new:**
+- **Pluggable everything.** Provider, scorer, transform, tier-mapping, axis — all registry-backed (`@register_scorer`, `@register_transform`). Swap in any OpenRouter model ID for a judge, register a custom classifier in ~20 LoC, drop in your own tier mapping.
+- **Unified `ModelBasedScorer` base** — LLM judges (`LLMJudgeScorer`) and safety classifiers (`LlamaGuardScorer`) share machinery, differ only in `_build_messages()` + `_parse()`.
+- **Composite scoring policy** — classifier-primary for safety/toxicity (no judge self-refusal failure mode); LLM-judge-primary for discrimination/calibration; reference-based for output liability.
+- **Multi-judge ensemble ("Legion mode")** — `MultiJudgeScorer` runs N judges in parallel, surfaces per-judge attribution and stdev-based disagreement.
+- **Multi-turn evaluation** — `score_conversation()` walks a `ConversationProbe` through a provider; 5 canonical attack scenarios shipped in `DEFAULT_MULTI_TURN_PROBES` (escalation, persona-drift, roleplay-laundering, trust-building PII, context-dilution).
+- **Attack transforms** — 6 procedural multipliers (translation laundering, persona swap, multi-turn escalation, typos, paraphrase, case change). One transform × N probes = N new test cases.
+- **HuggingFace dataset loaders** — HarmBench, JailbreakBench, BBQ, SimpleQA, TruthfulQA, RealToxicityPrompts, XSTest, with offline fallbacks.
+- **`GuardrailedProvider`** — wraps any inner provider with pre/post-flight guards; record `last_actions` for before/after lift reporting.
+- **Audit storage** — append-only JSONL (durable) + SQLite (regenerable index); `AuditReport.compare()` for guardrail-lift, `to_underwriting_memo()` renders the broker memo with axis means + tier distribution + lift table + worst-probe samples.
+- **`EvalConfig.from_yaml()`** — declare provider, axes (with composite/multi-judge specs), transforms, tier mapping in YAML; `Evaluator(config).audit(probes)` runs end-to-end.
+
+**Layout:**
+
+```
+src/argus/
+├── types.py              Instance / ScoreResult / RiskResult / JudgeVerdict / MultiJudgeResult
+├── probes.py             LiabilityProbe / TransformedProbe
+├── datasets.py           HF loaders per axis with offline fallbacks
+├── axes.py               AxisSpec + DEFAULT_AXES
+├── tier_mapping.py       InsuranceTierMapping / RiskLevelMapping / RawScoreMapping / GradeLetterMapping
+├── conversation.py       ConversationProbe + score_conversation() + DEFAULT_MULTI_TURN_PROBES
+├── eval_config.py        EvalConfig.from_yaml / .from_dict
+├── evaluator.py          Evaluator.audit()
+├── transforms/           AttackTransform ABC + 7 concrete subclasses
+├── scorers/              Scorer ABC + ModelBasedScorer + 8 concrete subclasses + registry
+├── providers/            ChatProvider ABC + 5 concrete + GuardrailedProvider
+├── guardrails/           PreFlightPatternGuard + PostFlightRegenGuard / HardRefuseGuard
+└── storage/              AuditWriter (JSONL) + AuditIndex (SQLite) + AuditReport
+```
+
+**30-second tour:**
+
+```python
+from argus import EvalConfig, Evaluator, load_safety_probes
+
+cfg = EvalConfig.from_dict({
+    "provider": {"name": "openrouter",
+                 "kwargs": {"model": "openai/gpt-4o-mini"},
+                 "guardrail": {"pre_flight": ["pattern"]}},
+    "axes": {
+        "safety_liability": {
+            "type": "composite",
+            "primary": [{"type": "llama_guard"}],
+            "llm_fallback": {
+                "type": "multi_judge",
+                "judges": [
+                    {"type": "llm_judge", "model": "anthropic/claude-sonnet-4", "rubric_axis": "safety_liability"},
+                    {"type": "llm_judge", "model": "openai/gpt-4o", "rubric_axis": "safety_liability"},
+                ],
+                "aggregator": "median",
+            },
+            "fallback_threshold": 0.7,
+        },
+    },
+    "transforms": ["identity", "persona_swap", "translation_laundering"],
+    "audit_log_path": "audit/run.jsonl",
+    "audit_db_path": "audit/index.db",
+})
+
+probes = load_safety_probes(n_harmbench=20, n_jailbreakbench=10, n_xstest=5)
+report = Evaluator(cfg).audit(probes, vendor_name="gpt-4o-mini")
+print(report.to_underwriting_memo(vendor_name="gpt-4o-mini"))
+```
+
+**Run the bundled examples:**
+
+```bash
+uv run python examples/quickstart.py        # 10 safety probes, single judge
+uv run python examples/custom_axis.py       # define a regulatory_compliance axis
+uv run python examples/multi_turn_audit.py  # 5 multi-turn attack scenarios
+uv run python examples/guardrail_lift.py    # A/B with vs without GuardrailedProvider
+uv run python examples/legion_mode.py       # 3-judge ensemble with disagreement
+```
+
+**Evaluating the strongest models (e.g. Opus 4.7):** the failure mode is the judge refusing to engage with extreme content (self-refusal). Argus's defence is policy-level: safety + toxicity axes are **classifier-primary** (Llama Guard / Perspective don't refuse — they classify), with LLM-judge as fallback only when the classifier is uncertain. For pure LLM-judge axes (discrimination, calibration), Legion mode mitigates self-refusal: if one judge refuses, the other two still vote, and disagreement is recorded.
+
+The v1 README below documents the originally submitted 70-row eval. Both surfaces coexist — v1 `RiskScorer` still works unchanged (with a new `score_conversation()` method added in v2).
+
+---
+
 ## Contents
 
 - [Results](#results)
@@ -190,6 +275,32 @@ uv run python -m evals.run --validate     # judge-validation gate first (12 synt
 uv run python -m evals.run                # full 70-prompt run, ~15-25 min, ~$1.50 in judge cost
 uv run python -m evals.report             # generate charts + summary
 ```
+
+## Eval commands (full reference)
+
+```bash
+# Always run the judge-validation gate first (~2 min)
+uv run python -m evals.run --validate
+
+# Smoke run (3 prompts/category × 2 providers, ~5 min)
+uv run python -m evals.run --limit 3
+
+# Full eval (35 prompts × 2 providers = 70 rows, ~15-25 min, ~$1.50 in judge cost)
+uv run python -m evals.run
+
+# Filter by provider or category
+uv run python -m evals.run --providers modal
+uv run python -m evals.run --providers openrouter --categories safety
+uv run python -m evals.run --providers modal --categories factual,bias --limit 2
+
+# Generate charts + summary table after a run
+uv run python -m evals.report
+```
+
+Outputs:
+- `evals/results.jsonl` — one row per `(prompt, provider)` with all scores
+- `evals/charts/*.png` — 4 charts ready to drop into the report
+- `report/eval_report.md` / `.html` / `.pdf` — rebuilt via `uv run python report/build_pdf.py`
 
 ## Repo
 
