@@ -734,56 +734,133 @@ with tab_compare:
 
 with tab_board:
     st.markdown("#### Cross-model leaderboard")
-    leaderboard = df.groupby(["model_under_test", "axis"])["value"].mean().unstack()
-    if leaderboard.empty:
-        st.info("Not enough data.")
-    else:
-        # Re-index with friendly model names + axis short names for display
-        leaderboard.index = [short_model_name(m) for m in leaderboard.index]
-        leaderboard.columns = [short_axis_name(a) for a in leaderboard.columns]
-        # vmin/vmax tightened to the meaningful range: below 1.0 is Tier-3
-        # (red), 1.0-1.5 is Tier-2 (amber), 1.5-2.0 is Tier-1 (green
-        # gradient). With the prior 0.0-2.0 range every score in our data
-        # (~1.6-2.0) ended up indistinguishably green.
-        st.caption("Color scale: red = below 1.0 (Tier 3), amber = 1.0–1.5 "
-                   "(Tier 2), green = 1.5–2.0 (Tier 1).")
+
+    # Filter selector — the whole point. Without this, baseline rows and
+    # guarded rows for the same model average together into a meaningless
+    # blended number.
+    summary = runs_summary(df)
+    view = st.radio(
+        "View",
+        ["Baseline (raw model)", "Guarded (best per model)", "Lift (Δ)", "Both side-by-side"],
+        horizontal=True, key="lb_view",
+    )
+
+    def pick_runs(badge_predicate) -> set[str]:
+        """Return the LATEST run_id per model matching the predicate."""
+        filtered = summary[summary["badge"].apply(badge_predicate)]
+        # latest per model
+        latest = filtered.sort_values("first_ts", ascending=False).drop_duplicates("model_under_test")
+        return set(latest["run_id"])
+
+    baseline_runs = pick_runs(lambda b: b == "baseline")
+    guarded_runs = pick_runs(lambda b: b != "baseline")
+
+    def axis_means_for(run_ids: set[str]) -> pd.DataFrame:
+        if not run_ids:
+            return pd.DataFrame()
+        sub = df[df["run_id"].isin(run_ids)]
+        out = sub.groupby(["model_under_test", "axis"])["value"].mean().unstack()
+        out.index = [short_model_name(m) for m in out.index]
+        out.columns = [short_axis_name(a) for a in out.columns]
+        return out
+
+    def render_heatmap(table: pd.DataFrame, caption: str = ""):
+        if table.empty:
+            st.info("No runs in this category yet.")
+            return
+        if caption:
+            st.caption(caption)
         st.dataframe(
-            leaderboard.style.format("{:.3f}")
-                .background_gradient(cmap="RdYlGn", axis=None,
-                                     vmin=1.0, vmax=2.0),
+            table.style.format("{:.3f}")
+                .background_gradient(cmap="RdYlGn", axis=None, vmin=1.0, vmax=2.0),
             use_container_width=True,
         )
 
-        st.markdown("---")
-        col_t1, col_cost = st.columns(2)
-        with col_t1:
-            st.markdown("**Tier-1 % by model**")
-            tier1 = (
-                df.groupby("model_under_test")["tier"]
-                  .apply(lambda s: (s == "1").mean() * 100.0)
-                  .sort_values(ascending=False)
-            )
-            tier1.index = [short_model_name(m) for m in tier1.index]
-            st.bar_chart(tier1)
-        with col_cost:
-            st.markdown("**Est. cost by model**")
-            cost = (
-                df.assign(c=df.apply(estimate_cost_usd, axis=1))
-                  .groupby("model_under_test")["c"].sum()
-                  .sort_values(ascending=False)
-            )
-            cost.index = [short_model_name(m) for m in cost.index]
-            st.bar_chart(cost)
+    base_table = axis_means_for(baseline_runs)
+    guard_table = axis_means_for(guarded_runs)
 
-        if cost.sum() > 0:
-            st.markdown("**Cost efficiency** — Tier-1 % per dollar")
-            eff = (tier1 / cost.replace(0, np.nan)).dropna().sort_values(ascending=False)
-            st.dataframe(
-                eff.reset_index().rename(
-                    columns={eff.name: "Tier-1 % per $", "model_under_test": "Model"},
-                ),
-                use_container_width=True, hide_index=True,
+    if view == "Baseline (raw model)":
+        st.markdown("**Raw model capability — no guards.** Latest baseline run per model.")
+        st.caption("Color scale: red < 1.0 · amber 1.0–1.5 · green 1.5–2.0")
+        render_heatmap(base_table)
+
+    elif view == "Guarded (best per model)":
+        st.markdown("**With Argus guards.** Latest guarded run per model.")
+        st.caption("Color scale: red < 1.0 · amber 1.0–1.5 · green 1.5–2.0")
+        render_heatmap(guard_table)
+
+    elif view == "Lift (Δ)":
+        st.markdown("**Lift from guards** — guarded mean minus baseline mean, per (model, axis).")
+        common_models = set(base_table.index) & set(guard_table.index)
+        if not common_models:
+            st.info("Need at least one model with both a baseline AND a guarded run.")
+        else:
+            common_axes = set(base_table.columns) & set(guard_table.columns)
+            lift_table = (
+                guard_table.loc[list(common_models), list(common_axes)]
+                - base_table.loc[list(common_models), list(common_axes)]
             )
+            st.caption("Green = guards helped, red = guards regressed (over-refusal cost).")
+            st.dataframe(
+                lift_table.style.format("{:+.3f}")
+                    .background_gradient(cmap="RdYlGn", axis=None, vmin=-0.3, vmax=0.3),
+                use_container_width=True,
+            )
+
+    else:  # Both side-by-side
+        st.caption("Color scale: red < 1.0 · amber 1.0–1.5 · green 1.5–2.0")
+        col_b, col_g = st.columns(2)
+        with col_b:
+            st.markdown("**Baseline** (raw model)")
+            render_heatmap(base_table)
+        with col_g:
+            st.markdown("**Guarded** (with Argus)")
+            render_heatmap(guard_table)
+
+    st.markdown("---")
+
+    # Tier-1 % and cost charts also use the selector
+    if view in ("Baseline (raw model)", "Both side-by-side"):
+        runs_for_charts = baseline_runs
+        chart_label = "Baseline"
+    elif view == "Guarded (best per model)":
+        runs_for_charts = guarded_runs
+        chart_label = "Guarded"
+    else:  # Lift
+        runs_for_charts = baseline_runs | guarded_runs
+        chart_label = "All"
+
+    chart_df = df[df["run_id"].isin(runs_for_charts)] if runs_for_charts else df
+
+    col_t1, col_cost = st.columns(2)
+    with col_t1:
+        st.markdown(f"**Tier-1 % by model** ({chart_label})")
+        tier1 = (
+            chart_df.groupby("model_under_test")["tier"]
+              .apply(lambda s: (s == "1").mean() * 100.0)
+              .sort_values(ascending=False)
+        )
+        tier1.index = [short_model_name(m) for m in tier1.index]
+        st.bar_chart(tier1)
+    with col_cost:
+        st.markdown(f"**Est. cost by model** ({chart_label})")
+        cost = (
+            chart_df.assign(c=chart_df.apply(estimate_cost_usd, axis=1))
+              .groupby("model_under_test")["c"].sum()
+              .sort_values(ascending=False)
+        )
+        cost.index = [short_model_name(m) for m in cost.index]
+        st.bar_chart(cost)
+
+    if cost.sum() > 0:
+        st.markdown(f"**Cost efficiency** — Tier-1 % per dollar ({chart_label})")
+        eff = (tier1 / cost.replace(0, np.nan)).dropna().sort_values(ascending=False)
+        st.dataframe(
+            eff.reset_index().rename(
+                columns={eff.name: "Tier-1 % per $", "model_under_test": "Model"},
+            ),
+            use_container_width=True, hide_index=True,
+        )
 
 
 # ===========================================================================
