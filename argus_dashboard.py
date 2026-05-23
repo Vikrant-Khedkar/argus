@@ -197,7 +197,7 @@ def runs_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ----------------------------------------------------------------------------
-# UI helpers
+# UI helpers — pill design system
 # ----------------------------------------------------------------------------
 
 def axis_color(value: float) -> str:
@@ -208,72 +208,149 @@ def axis_color(value: float) -> str:
     return "#dc2626"
 
 
-BADGE_COLORS = {
-    "baseline": "#64748b",
-    "guarded": "#0ea5e9",
-}
-
-
 def badge_color(badge: str) -> str:
     if badge == "baseline":
-        return BADGE_COLORS["baseline"]
-    # Any guarded variant uses the same blue family with intensity by tier count
+        return "#64748b"
     n_tiers = badge.count("+") + 1 if "guarded(" in badge else 1
-    intensity = {1: "#0ea5e9", 2: "#0284c7", 3: "#0369a1"}.get(n_tiers, "#0ea5e9")
-    return intensity
+    return {1: "#0ea5e9", 2: "#0284c7", 3: "#0369a1"}.get(n_tiers, "#0ea5e9")
+
+
+def short_axis_name(axis: str) -> str:
+    """`safety_liability` -> `safety`. Easier to scan in dense tables."""
+    return axis.replace("_liability", "").replace("_", " ")
+
+
+def _pill(text: str, bg: str, fg: str = "white",
+          size: str = "0.78em", weight: int = 500) -> str:
+    return (
+        f'<span style="background:{bg};color:{fg};padding:2px 9px;'
+        f'border-radius:10px;font-size:{size};font-weight:{weight};'
+        f'white-space:nowrap;display:inline-block;line-height:1.5;">{text}</span>'
+    )
 
 
 def model_chip(model: str, small: bool = False) -> str:
-    color = color_for_model(model)
     name = short_model_name(model)
-    size = "0.75em" if small else "0.85em"
-    pad = "1px 6px" if small else "3px 10px"
-    return (
-        f'<span style="background:{color};color:white;padding:{pad};'
-        f'border-radius:10px;font-size:{size};font-weight:600;'
-        f'white-space:nowrap;">{name}</span>'
-    )
+    size = "0.72em" if small else "0.82em"
+    return _pill(name, color_for_model(model), size=size, weight=600)
 
 
 def badge_chip(badge: str, small: bool = False) -> str:
-    color = badge_color(badge)
-    label = badge
-    size = "0.75em" if small else "0.85em"
-    pad = "1px 6px" if small else "2px 8px"
-    return (
-        f'<span style="background:{color};color:white;padding:{pad};'
-        f'border-radius:10px;font-size:{size};font-weight:500;'
-        f'white-space:nowrap;">{label}</span>'
+    size = "0.72em" if small else "0.82em"
+    return _pill(badge, badge_color(badge), size=size)
+
+
+def tier_pill(tier: str | int) -> str:
+    t = str(tier)
+    color = {"1": "#16a34a", "2": "#ca8a04", "3": "#dc2626"}.get(t, "#94a3b8")
+    return _pill(f"T{t}", color, size="0.72em")
+
+
+def score_pill(value: float) -> str:
+    return _pill(f"{value:.2f}", axis_color(value), size="0.78em", weight=600)
+
+
+def delta_pill(delta: float) -> str:
+    if delta > 0.005:
+        return _pill(f"▲ +{delta:.3f}", "#16a34a", size="0.78em")
+    if delta < -0.005:
+        return _pill(f"▼ {delta:.3f}", "#dc2626", size="0.78em")
+    return _pill(f"— {delta:+.3f}", "#94a3b8", size="0.78em")
+
+
+def axis_pill(axis: str) -> str:
+    return _pill(
+        short_axis_name(axis), "#e0e7ff", fg="#3730a3",
+        size="0.75em", weight=500,
     )
 
 
-def run_label_chips(row) -> str:
-    """Compact HTML: <model chip> <badge chip> <when> · <short_id>"""
+def transform_pill(transform: str) -> str:
+    if transform == "identity":
+        return _pill("identity", "#f1f5f9", fg="#475569", size="0.72em", weight=400)
+    return _pill(transform, "#fef3c7", fg="#92400e", size="0.72em", weight=500)
+
+
+def code_pill(text: str) -> str:
     return (
-        f'{model_chip(row["model_under_test"], small=True)} '
-        f'{badge_chip(row["badge"], small=True)} '
-        f'<span style="color:#64748b;font-size:0.85em;">{row["when"]} · '
-        f'<code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;'
-        f'font-size:0.85em;">{row["short_id"]}</code></span>'
+        f'<code style="background:#f1f5f9;padding:2px 7px;border-radius:6px;'
+        f'font-size:0.78em;color:#475569;">{text}</code>'
+    )
+
+
+def when_text(when: str) -> str:
+    return f'<span style="color:#64748b;font-size:0.82em;">{when}</span>'
+
+
+def run_hero(row, prefix: str = "") -> str:
+    """Big-ish header strip for the currently-picked run."""
+    return (
+        f'<div style="margin:6px 0 14px 0;line-height:2;">'
+        f'{(prefix + " ") if prefix else ""}'
+        f'{model_chip(row["model_under_test"])} &nbsp; '
+        f'{badge_chip(row["badge"])} &nbsp; '
+        f'{when_text(row["when"])} &nbsp; '
+        f'{code_pill(row["short_id"])}'
+        f'</div>'
     )
 
 
 def scorecard(label: str, value: float, max_value: float = 2.0):
     color = axis_color(value)
     fill_pct = (value / max_value) * 100.0
+    short = short_axis_name(label)
     st.markdown(
         f"""
-        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;">
-          <div style="font-size:0.75em;color:#6b7280;text-transform:uppercase;
-                      letter-spacing:0.04em;">{label}</div>
-          <div style="font-size:1.6em;font-weight:600;color:{color};margin-top:4px;">{value:.3f}</div>
-          <div style="background:#f3f4f6;border-radius:4px;height:6px;margin-top:8px;
-                      overflow:hidden;">
-            <div style="background:{color};height:6px;width:{fill_pct:.1f}%;"></div>
+        <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;
+                    background:#fafafa;">
+          <div style="font-size:0.72em;color:#6b7280;text-transform:uppercase;
+                      letter-spacing:0.06em;font-weight:600;">{short}</div>
+          <div style="font-size:1.7em;font-weight:700;color:{color};
+                      margin-top:6px;line-height:1;">{value:.3f}</div>
+          <div style="background:#e5e7eb;border-radius:4px;height:5px;
+                      margin-top:10px;overflow:hidden;">
+            <div style="background:{color};height:5px;width:{fill_pct:.1f}%;"></div>
           </div>
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def render_lift_table(lift: pd.DataFrame) -> str:
+    """Custom HTML lift table — colored deltas, axis pills."""
+    rows_html = []
+    for _, r in lift.iterrows():
+        delta_html = delta_pill(r["delta"])
+        pct = r["pct_change"]
+        if abs(pct) < float("inf"):
+            pct_str = f"{pct:+.1f}%"
+        else:
+            pct_str = "n/a"
+        pct_color = "#16a34a" if pct > 0.5 else "#dc2626" if pct < -0.5 else "#64748b"
+        rows_html.append(
+            f"<tr>"
+            f"<td style='padding:8px 10px;'>{axis_pill(r['axis'])}</td>"
+            f"<td style='padding:8px 10px;text-align:right;color:#475569;'>{r['before']:.3f}</td>"
+            f"<td style='padding:8px 10px;text-align:right;font-weight:600;'>{r['after']:.3f}</td>"
+            f"<td style='padding:8px 10px;text-align:center;'>{delta_html}</td>"
+            f"<td style='padding:8px 10px;text-align:right;color:{pct_color};font-weight:500;'>{pct_str}</td>"
+            f"</tr>"
+        )
+    return (
+        '<table style="width:100%;border-collapse:collapse;'
+        'border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;'
+        'font-size:0.9em;">'
+        '<thead style="background:#f8fafc;">'
+        '<tr>'
+        '<th style="padding:10px;text-align:left;font-weight:600;color:#475569;">Axis</th>'
+        '<th style="padding:10px;text-align:right;font-weight:600;color:#475569;">Before</th>'
+        '<th style="padding:10px;text-align:right;font-weight:600;color:#475569;">After</th>'
+        '<th style="padding:10px;text-align:center;font-weight:600;color:#475569;">Δ</th>'
+        '<th style="padding:10px;text-align:right;font-weight:600;color:#475569;">% change</th>'
+        '</tr></thead><tbody>'
+        + "".join(rows_html)
+        + '</tbody></table>'
     )
 
 
@@ -425,16 +502,7 @@ with tab_detail:
         run_id = row["run_id"]
         run_df = df[df["run_id"] == run_id]
 
-        # Header strip with rich chips
-        st.markdown(
-            f'<div style="margin-top:8px;">'
-            f'{model_chip(row["model_under_test"])} &nbsp; '
-            f'{badge_chip(row["badge"])} &nbsp; '
-            f'<span style="color:#64748b;font-size:0.9em;">'
-            f'{row["when"]} · <code style="background:#f1f5f9;padding:2px 6px;border-radius:3px;">{row["short_id"]}</code>'
-            f'</span></div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(run_hero(row), unsafe_allow_html=True)
 
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Rows", int(row["rows"]))
@@ -490,10 +558,32 @@ with tab_detail:
             run_df[run_df["value"] < threshold]
             .sort_values("value")
             .head(100)
-            [["instance_id", "axis", "value", "tier", "scorer_name",
-              "attack_transform", "multi_turn", "rationale"]]
+            .copy()
         )
-        st.dataframe(worst, use_container_width=True, hide_index=True)
+        if worst.empty:
+            st.success(f"No rows below {threshold:.1f} — clean run.")
+        else:
+            worst["axis_short"] = worst["axis"].apply(short_axis_name)
+            worst["transform"] = worst["attack_transform"]
+            worst_display = worst[[
+                "instance_id", "axis_short", "value", "tier",
+                "scorer_name", "transform", "multi_turn", "rationale",
+            ]].rename(columns={"axis_short": "axis"})
+            st.dataframe(
+                worst_display,
+                use_container_width=True, hide_index=True,
+                column_config={
+                    "instance_id": "Probe",
+                    "axis": "Axis",
+                    "value": st.column_config.NumberColumn("Score", format="%.2f"),
+                    "tier": "Tier",
+                    "scorer_name": "Scorer",
+                    "transform": "Transform",
+                    "multi_turn": st.column_config.CheckboxColumn("Multi-turn"),
+                    "rationale": st.column_config.TextColumn(
+                        "Rationale", width="large"),
+                },
+            )
 
 
 # ===========================================================================
@@ -522,11 +612,7 @@ with tab_compare:
                 label_visibility="collapsed",
             )
             row_a = summary.iloc[a_idx]
-            st.markdown(
-                f'<div>{model_chip(row_a["model_under_test"])} '
-                f'{badge_chip(row_a["badge"])}</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(run_hero(row_a), unsafe_allow_html=True)
         with c_right:
             st.markdown("**Treatment (after)**")
             b_idx = st.selectbox(
@@ -542,11 +628,7 @@ with tab_compare:
                 label_visibility="collapsed",
             )
             row_b = summary.iloc[b_idx]
-            st.markdown(
-                f'<div>{model_chip(row_b["model_under_test"])} '
-                f'{badge_chip(row_b["badge"])}</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(run_hero(row_b), unsafe_allow_html=True)
 
         run_a, run_b = row_a["run_id"], row_b["run_id"]
         means_a = df[df["run_id"] == run_a].groupby("axis")["value"].mean()
@@ -564,15 +646,8 @@ with tab_compare:
 
         st.markdown("---")
         st.markdown("#### Axis lift")
-        st.dataframe(
-            lift, use_container_width=True, hide_index=True,
-            column_config={
-                "before": st.column_config.NumberColumn("Before", format="%.3f"),
-                "after": st.column_config.NumberColumn("After", format="%.3f"),
-                "delta": st.column_config.NumberColumn("Δ", format="%+.3f"),
-                "pct_change": st.column_config.NumberColumn("% change", format="%+.1f%%"),
-            },
-        )
+        st.markdown(render_lift_table(lift), unsafe_allow_html=True)
+        st.markdown("")  # spacer
         chart_data = pd.DataFrame({
             "before": means_a.reindex(axes_all, fill_value=0.0),
             "after":  means_b.reindex(axes_all, fill_value=0.0),
@@ -614,16 +689,24 @@ with tab_compare:
                         & (df["attack_transform"] == tform)].iloc[0]
                 st.code(ra["prompt"][:500], language=None)
                 lcol, rcol = st.columns(2)
-                with lcol:
-                    st.caption(f"**Before** · score={ra['value']:.2f} · tier={ra['tier']}")
-                    if ra["guardrail_action"]:
-                        st.caption(f"⛔ `{ra['guardrail_action']}`")
-                    st.markdown(ra["response"][:2000])
-                with rcol:
-                    st.caption(f"**After** · score={rb['value']:.2f} · tier={rb['tier']}")
-                    if rb["guardrail_action"]:
-                        st.caption(f"⛔ `{rb['guardrail_action']}`")
-                    st.markdown(rb["response"][:2000])
+                for col, side, r in [(lcol, "Before", ra), (rcol, "After", rb)]:
+                    with col:
+                        st.markdown(
+                            f"<div style='margin-bottom:6px;'>"
+                            f"<strong>{side}</strong> &nbsp; "
+                            f"{score_pill(r['value'])} &nbsp; "
+                            f"{tier_pill(r['tier'])}"
+                            f"</div>",
+                            unsafe_allow_html=True,
+                        )
+                        if r["guardrail_action"]:
+                            st.markdown(
+                                f"<div style='margin-bottom:8px;'>"
+                                f"⛔ {code_pill(r['guardrail_action'])}"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
+                        st.markdown(r["response"][:2000])
         else:
             st.caption("Per-probe scatter and side-by-side only meaningful when "
                        "both runs target the same model.")
@@ -694,42 +777,78 @@ with tab_probe:
         st.markdown("**Prompt**")
         st.code(sub["prompt"].iloc[0][:1000], language=None)
 
-        st.markdown("**Per-model summary**")
+        st.markdown("**Per-model verdict**")
+        # HTML mini-table with pills for an at-a-glance read
+        per_model_rows = []
         per_model = (
             sub.groupby("model_under_test")
             .agg(
                 avg_score=("value", "mean"),
                 worst_axis_score=("value", "min"),
-                transforms=("attack_transform", lambda s: ", ".join(sorted(s.unique()))),
-                guardrail_actions=("guardrail_action",
-                                    lambda s: ", ".join(sorted([a for a in s.unique() if a])) or "(none)"),
             )
             .reset_index()
             .sort_values("avg_score", ascending=False)
         )
-        per_model["Model"] = per_model["model_under_test"].apply(short_model_name)
-        st.dataframe(
-            per_model[["Model", "avg_score", "worst_axis_score", "transforms", "guardrail_actions"]],
-            use_container_width=True, hide_index=True,
-            column_config={
-                "avg_score": st.column_config.NumberColumn("Avg score", format="%.3f"),
-                "worst_axis_score": st.column_config.NumberColumn("Worst axis", format="%.3f"),
-            },
+        for _, r in per_model.iterrows():
+            mut = r["model_under_test"]
+            guards = sorted({a for a in sub[sub["model_under_test"] == mut]["guardrail_action"] if a})
+            guard_html = " ".join(code_pill(g) for g in guards) if guards else (
+                '<span style="color:#94a3b8;font-size:0.8em;">no guards fired</span>'
+            )
+            per_model_rows.append(
+                f"<tr>"
+                f"<td style='padding:8px 12px;'>{model_chip(mut)}</td>"
+                f"<td style='padding:8px 12px;'>{score_pill(r['avg_score'])}</td>"
+                f"<td style='padding:8px 12px;'>{score_pill(r['worst_axis_score'])}</td>"
+                f"<td style='padding:8px 12px;'>{guard_html}</td>"
+                f"</tr>"
+            )
+        st.markdown(
+            '<table style="width:100%;border-collapse:collapse;'
+            'border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;'
+            'font-size:0.9em;">'
+            '<thead style="background:#f8fafc;"><tr>'
+            '<th style="padding:10px;text-align:left;color:#475569;">Model</th>'
+            '<th style="padding:10px;text-align:left;color:#475569;">Avg</th>'
+            '<th style="padding:10px;text-align:left;color:#475569;">Worst axis</th>'
+            '<th style="padding:10px;text-align:left;color:#475569;">Guard actions</th>'
+            '</tr></thead><tbody>'
+            + "".join(per_model_rows)
+            + '</tbody></table>',
+            unsafe_allow_html=True,
         )
+        st.markdown("")  # spacer
 
         st.markdown("---")
         st.markdown("**Responses**")
         for (mut, transform), gdf in sub.groupby(["model_under_test", "attack_transform"]):
-            chip = model_chip(mut, small=True)
+            avg = float(gdf["value"].mean())
+            worst = float(gdf["value"].min())
             guard = next((a for a in gdf["guardrail_action"] if a), "")
-            guard_chip = f' <span style="color:#dc2626;font-size:0.8em;">⛔ {guard}</span>' if guard else ""
-            header = f'{chip} <code style="background:#f1f5f9;padding:1px 6px;border-radius:3px;">{transform}</code>{guard_chip}'
+            header = (
+                f'{model_chip(mut, small=True)} &nbsp; '
+                f'{transform_pill(transform)} &nbsp; '
+                f'{score_pill(avg)} &nbsp; '
+                f'<span style="color:#64748b;font-size:0.78em;">worst {worst:.2f}</span>'
+            )
+            if guard:
+                header += f' &nbsp; ⛔ {code_pill(guard)}'
             st.markdown(header, unsafe_allow_html=True)
             with st.expander("Show response + axis verdicts", expanded=False):
                 st.markdown(gdf["response"].iloc[0][:2000])
-                axis_table = gdf[["axis", "value", "tier", "scorer_name",
-                                  "disagreement", "rationale"]].copy()
-                st.dataframe(axis_table, use_container_width=True, hide_index=True)
+                axis_view = gdf[["axis", "value", "tier", "scorer_name",
+                                 "disagreement", "rationale"]].copy()
+                axis_view["axis"] = axis_view["axis"].apply(short_axis_name)
+                st.dataframe(
+                    axis_view, use_container_width=True, hide_index=True,
+                    column_config={
+                        "value": st.column_config.NumberColumn("Score", format="%.2f"),
+                        "disagreement": st.column_config.NumberColumn(
+                            "Disagree", format="%.3f"),
+                        "rationale": st.column_config.TextColumn(
+                            "Rationale", width="large"),
+                    },
+                )
                 for _, row in gdf.iterrows():
                     extra = row.get("extra", "")
                     try:
@@ -737,7 +856,7 @@ with tab_probe:
                     except Exception:
                         continue
                     if extra and "per_judge" in extra:
-                        st.caption(f"Per-judge breakdown — axis `{row['axis']}`")
+                        st.caption(f"Per-judge breakdown · {axis_pill(row['axis'])}")
                         st.dataframe(
                             pd.DataFrame.from_dict(extra["per_judge"], orient="index"),
                             use_container_width=True,
