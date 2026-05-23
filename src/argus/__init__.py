@@ -41,8 +41,15 @@ from .scorers import (
     register_scorer,
     get_scorer_class,
     list_scorers,
+    ModelBasedScorer,
     CompositeScorer,
     MultiJudgeScorer,
+    LLMJudgeScorer,
+    LlamaGuardScorer,
+    PerspectiveAPIScorer,
+    RefusalRegexScorer,
+    KeyFactsScorer,
+    HedgePhraseScorer,
 )
 
 __version__ = "0.2.0-dev"
@@ -85,7 +92,14 @@ __all__ = [
     "register_scorer",
     "get_scorer_class",
     "list_scorers",
+    "ModelBasedScorer",
     "CompositeScorer",
     "MultiJudgeScorer",
+    "LLMJudgeScorer",
+    "LlamaGuardScorer",
+    "PerspectiveAPIScorer",
+    "RefusalRegexScorer",
+    "KeyFactsScorer",
+    "HedgePhraseScorer",
     "__version__",
 ]

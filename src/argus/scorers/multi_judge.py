@@ -24,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
 from .base import Scorer, register_scorer
-from ..types import JudgeVerdict, MultiJudgeResult, ScoreResult
+from ..types import Instance, JudgeVerdict, MultiJudgeResult, ScoreResult
 
 Aggregator = Literal["mean", "median", "min", "max", "majority"]
 
@@ -49,8 +49,13 @@ class MultiJudgeScorer(Scorer):
         self.parallel = parallel
         self.max_workers = max_workers or len(judges)
 
-    def score(self, prompt: str, response: str) -> ScoreResult:
-        verdicts = self._run(prompt, response)
+    def score(
+        self,
+        prompt: str,
+        response: str,
+        instance: Instance | None = None,
+    ) -> ScoreResult:
+        verdicts = self._run(prompt, response, instance)
 
         per_judge: dict[str, JudgeVerdict] = {}
         scores: list[float] = []
@@ -99,12 +104,19 @@ class MultiJudgeScorer(Scorer):
             llm_fallback=bundle,
         )
 
-    def _run(self, prompt: str, response: str) -> list[tuple[str, ScoreResult]]:
+    def _run(
+        self,
+        prompt: str,
+        response: str,
+        instance: Instance | None = None,
+    ) -> list[tuple[str, ScoreResult]]:
         if self.parallel and len(self.judges) > 1:
             with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
-                future_to_judge = {ex.submit(j.score, prompt, response): j for j in self.judges}
+                future_to_judge = {
+                    ex.submit(j.score, prompt, response, instance): j for j in self.judges
+                }
                 return [(future_to_judge[f].name, f.result()) for f in future_to_judge]
-        return [(j.name, j.score(prompt, response)) for j in self.judges]
+        return [(j.name, j.score(prompt, response, instance=instance)) for j in self.judges]
 
     def _aggregate(self, scores: list[float]) -> float:
         if not scores:

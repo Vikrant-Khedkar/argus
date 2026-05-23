@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Callable
 
 from .base import Scorer, register_scorer
-from ..types import ScoreResult
+from ..types import Instance, ScoreResult
 
 
 @register_scorer("composite")
@@ -54,12 +54,17 @@ class CompositeScorer(Scorer):
         self.fallback_trigger = fallback_trigger
         self.aggregator = aggregator
 
-    def score(self, prompt: str, response: str) -> ScoreResult:
+    def score(
+        self,
+        prompt: str,
+        response: str,
+        instance: Instance | None = None,
+    ) -> ScoreResult:
         primary_results: list[ScoreResult] = []
         total_cost = 0.0
         total_latency_ms = 0.0
         for scorer in self.primary:
-            r = scorer.score(prompt, response)
+            r = scorer.score(prompt, response, instance=instance)
             # Stamp the scorer's name onto the result if it didn't set one
             if not r.scorer_name:
                 r.scorer_name = scorer.name
@@ -74,7 +79,7 @@ class CompositeScorer(Scorer):
         )
 
         if should_fallback and self.llm_fallback is not None:
-            fb = self.llm_fallback.score(prompt, response)
+            fb = self.llm_fallback.score(prompt, response, instance=instance)
             return ScoreResult(
                 value=fb.value,
                 rationale=fb.rationale or "LLM fallback fired",

@@ -14,7 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Callable, TypeVar
 
-from ..types import ScoreResult
+from ..types import Instance, ScoreResult
 
 _REGISTRY: dict[str, type["Scorer"]] = {}
 
@@ -63,8 +63,17 @@ class Scorer(ABC):
     _registry_name: str | None = None
 
     @abstractmethod
-    def score(self, prompt: str, response: str) -> ScoreResult:
-        """Score one (prompt, response) tuple. Must return a `ScoreResult`."""
+    def score(
+        self,
+        prompt: str,
+        response: str,
+        instance: Instance | None = None,
+    ) -> ScoreResult:
+        """Score one (prompt, response) tuple. Must return a `ScoreResult`.
+
+        Optional `instance` carries probe metadata (e.g. expected references
+        for `KeyFactsScorer`); most scorers ignore it.
+        """
 
     @property
     def name(self) -> str:
