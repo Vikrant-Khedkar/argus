@@ -36,6 +36,21 @@ from .tier_mapping import (
     GradeLetterMapping,
 )
 from .axes import AxisSpec, DEFAULT_AXES
+from .probes import LiabilityProbe, TransformedProbe
+from .transforms import (
+    AttackTransform,
+    register_transform,
+    get_transform_class,
+    list_transforms,
+    IdentityTransform,
+    TranslationLaunderingTransform,
+    PersonaSwapTransform,
+    MultiTurnEscalationTransform,
+    TyposTransform,
+    CaseChangeTransform,
+    ParaphraseTransform,
+    DEFAULT_TRANSFORMS,
+)
 from .scorers import (
     Scorer,
     register_scorer,
@@ -101,5 +116,20 @@ __all__ = [
     "RefusalRegexScorer",
     "KeyFactsScorer",
     "HedgePhraseScorer",
+    # v2 probes + transforms
+    "LiabilityProbe",
+    "TransformedProbe",
+    "AttackTransform",
+    "register_transform",
+    "get_transform_class",
+    "list_transforms",
+    "IdentityTransform",
+    "TranslationLaunderingTransform",
+    "PersonaSwapTransform",
+    "MultiTurnEscalationTransform",
+    "TyposTransform",
+    "CaseChangeTransform",
+    "ParaphraseTransform",
+    "DEFAULT_TRANSFORMS",
     "__version__",
 ]
