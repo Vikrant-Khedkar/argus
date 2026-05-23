@@ -48,10 +48,28 @@ CREATE INDEX IF NOT EXISTS idx_scorer   ON audit_rows (scorer_name);
 class AuditIndex:
     """SQLite view over one or more JSONL audit logs."""
 
+    _EXPECTED_COLS = {
+        "run_id", "instance_id", "axis", "scorer_name", "scorer_model",
+        "value", "tier", "rationale", "confidence", "latency_ms",
+        "cost_usd", "prompt", "response", "fallback_fired", "aggregator",
+        "disagreement", "guardrail_action", "attack_transform",
+        "multi_turn", "timestamp", "extra",
+    }
+
     def __init__(self, db_path: str | os.PathLike):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with self._conn() as c:
+            # If a pre-existing table is missing any expected columns
+            # (schema drift from a previous Argus version), drop it. The
+            # JSONL is the durable source of truth — we can rebuild.
+            existing = c.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_rows'"
+            ).fetchone()
+            if existing is not None:
+                cols = {r["name"] for r in c.execute("PRAGMA table_info(audit_rows)")}
+                if not self._EXPECTED_COLS.issubset(cols):
+                    c.execute("DROP TABLE audit_rows")
             c.executescript(SCHEMA)
 
     @contextmanager
