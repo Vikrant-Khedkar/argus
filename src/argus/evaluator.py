@@ -282,7 +282,16 @@ class Evaluator:
             if writer.is_done(probe.id, axis, None, multi_turn=True):
                 bump(skip=1)
                 return
-            score = scorer.score(prompt=full_prompt, response=final_response)
+            try:
+                score = scorer.score(prompt=full_prompt, response=final_response)
+            except Exception as e:  # noqa: BLE001
+                from .types import ScoreResult
+                score = ScoreResult(
+                    value=1.0,
+                    rationale=f"scorer_error: {type(e).__name__}: {str(e)[:240]}",
+                    scorer_name=getattr(scorer, "name", "unknown"),
+                    confidence=0.0,
+                )
             score.tier = self.tier_mapping.map(score.value)
             if mt_guardrail_tag and not score.guardrail_action:
                 score.guardrail_action = mt_guardrail_tag
@@ -323,7 +332,19 @@ class Evaluator:
             if writer.is_done(probe_id, axis, transform_tag, multi_turn=multi_turn):
                 bump(skip=1)
                 return
-            score = scorer.score(prompt=user_msg, response=response)
+            try:
+                score = scorer.score(prompt=user_msg, response=response)
+            except Exception as e:  # noqa: BLE001
+                # One axis failing must not crash the audit. Record a
+                # neutral score with the exception so the row count is
+                # consistent and forensics are possible.
+                from .types import ScoreResult
+                score = ScoreResult(
+                    value=1.0,
+                    rationale=f"scorer_error: {type(e).__name__}: {str(e)[:240]}",
+                    scorer_name=getattr(scorer, "name", "unknown"),
+                    confidence=0.0,
+                )
             score.tier = self.tier_mapping.map(score.value)
             if guardrail_action and not score.guardrail_action:
                 score.guardrail_action = guardrail_action

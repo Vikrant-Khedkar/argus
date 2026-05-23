@@ -110,13 +110,31 @@ class MultiJudgeScorer(Scorer):
         response: str,
         instance: Instance | None = None,
     ) -> list[tuple[str, ScoreResult]]:
+        """Run each judge; absorb per-judge errors so one bad judge doesn't
+        sink the whole ensemble (or the whole audit row)."""
+
+        def _safe_score(judge):
+            try:
+                return judge.score(prompt, response, instance=instance)
+            except Exception as e:  # noqa: BLE001
+                # Record an explicit failure verdict — value=1.0 is a
+                # neutral mid-score so a single error doesn't skew the
+                # aggregated value heavily in either direction; the
+                # rationale carries the exception for audit forensics.
+                return ScoreResult(
+                    value=1.0,
+                    rationale=f"judge_error: {type(e).__name__}: {str(e)[:240]}",
+                    scorer_name=judge.name,
+                    confidence=0.0,
+                )
+
         if self.parallel and len(self.judges) > 1:
             with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
                 future_to_judge = {
-                    ex.submit(j.score, prompt, response, instance): j for j in self.judges
+                    ex.submit(_safe_score, j): j for j in self.judges
                 }
                 return [(future_to_judge[f].name, f.result()) for f in future_to_judge]
-        return [(j.name, j.score(prompt, response, instance=instance)) for j in self.judges]
+        return [(j.name, _safe_score(j)) for j in self.judges]
 
     def _aggregate(self, scores: list[float]) -> float:
         if not scores:

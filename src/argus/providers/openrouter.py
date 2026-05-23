@@ -60,6 +60,17 @@ def _post_with_backoff(headers: dict, body: dict, timeout: float = 180.0) -> dic
                 time.sleep(_BASE_BACKOFF_S * (2 ** attempt) + random.random() * 0.5)
                 continue
 
+            if 400 <= r.status_code < 500:
+                # 4xx (other than 429) is permanent — surface the body so
+                # the caller can see *what* OpenRouter rejected. Don't retry.
+                body_excerpt = (r.text or "")[:500]
+                raise httpx.HTTPStatusError(
+                    f"{r.status_code} from OpenRouter "
+                    f"(model={body.get('model')}): {body_excerpt}",
+                    request=r.request,
+                    response=r,
+                )
+
             r.raise_for_status()
             OPENROUTER_SEMAPHORE.signal_success()
             return r.json()
