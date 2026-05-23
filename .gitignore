@@ -14,6 +14,12 @@ llm_fundamentals.md
 codebase_walkthrough.md
 helm_study.md
 plan.md
-docs/
+docs/argus_philosophy.md
+docs/argus_scorer_blueprint.md
+docs/codebase_walkthrough.md
+docs/eval_methods_reference.md
+docs/helm_philosophy.md
+docs/interview_prep.md
+docs/llm_fundamentals.md
 *.egg-info/
 examples/out/
