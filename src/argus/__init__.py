@@ -54,6 +54,7 @@ from .conversation import (
     score_conversation,
     DEFAULT_MULTI_TURN_PROBES,
 )
+from .storage import AuditWriter, AuditRow, AuditIndex, AuditReport
 from .datasets import (
     load_factual_probes,
     load_bias_probes,
@@ -173,6 +174,11 @@ __all__ = [
     "ConversationResult",
     "score_conversation",
     "DEFAULT_MULTI_TURN_PROBES",
+    # v2 storage / reporting
+    "AuditWriter",
+    "AuditRow",
+    "AuditIndex",
+    "AuditReport",
     # v2 datasets
     "load_factual_probes",
     "load_bias_probes",
