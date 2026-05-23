@@ -17,7 +17,9 @@ Runtime ~5–8 min, cost ~$0.30–0.50 depending on which probes hit which axes.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import sys
 from pathlib import Path
 
 from argus import (
@@ -28,6 +30,16 @@ from argus import (
     load_factual_probes,
     load_safety_probes,
 )
+
+# Resumable: pass --resume to continue the latest run, or
+# --resume=<run_id> for a specific one. Without it, a fresh run starts.
+RESUME_ARG = next((a for a in sys.argv[1:] if a.startswith("--resume")), None)
+if RESUME_ARG == "--resume":
+    RESUME = "latest"
+elif RESUME_ARG and "=" in RESUME_ARG:
+    RESUME = RESUME_ARG.split("=", 1)[1]
+else:
+    RESUME = os.getenv("ARGUS_RESUME")   # also honour env var
 
 OUT = Path("examples/out")
 OUT.mkdir(parents=True, exist_ok=True)
@@ -111,11 +123,15 @@ print(f"    = {n_st}×{n_tf} single-turn × {n_ax} axes  +  {n_mt} multi-turn ×
 print()
 
 # -----------------------------------------------------------------------------
-# Run 1 — baseline (no guardrails)
+# Run 1 — baseline (no guardrails) — resumable
 # -----------------------------------------------------------------------------
 print(">>> Run 1/2: baseline (no guardrails)")
+if RESUME:
+    print(f"    resume mode: {RESUME!r}")
 report_base = Evaluator(EvalConfig.from_dict(BASE_CONFIG)).audit(
-    all_probes, vendor_name="gpt-4o-mini (baseline)",
+    all_probes,
+    vendor_name="gpt-4o-mini (baseline)",
+    resume_run_id=RESUME,
 )
 baseline_run = report_base.run_id
 print(f"    baseline run_id: {baseline_run}")

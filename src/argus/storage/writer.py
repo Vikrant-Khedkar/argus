@@ -59,27 +59,74 @@ class AuditRow:
 
 
 class AuditWriter:
-    """Append-only JSONL audit log.
+    """Append-only JSONL audit log; resumable when a run_id is reused.
 
     Args:
         path: Output JSONL path. Parent dirs are created on demand.
         run_id: Optional pre-generated run id; otherwise a new one is minted.
+            When the same `run_id` is reused, completed rows are loaded from
+            the existing JSONL so `is_done()` can be consulted to skip them.
     """
 
     def __init__(self, path: str | os.PathLike, run_id: str | None = None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.run_id = run_id or new_run_id()
+        self._done: set[tuple[str, str, str, bool]] = set()
+        if run_id and self.path.exists():
+            self._load_done()
+
+    def _load_done(self) -> None:
+        with self.path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if row.get("run_id") != self.run_id:
+                    continue
+                self._done.add((
+                    row.get("instance_id", ""),
+                    row.get("axis", ""),
+                    row.get("attack_transform") or "",
+                    bool(row.get("multi_turn")),
+                ))
+
+    def is_done(
+        self,
+        instance_id: str,
+        axis: str,
+        attack_transform: str | None = None,
+        multi_turn: bool = False,
+    ) -> bool:
+        return (
+            instance_id,
+            axis,
+            attack_transform or "",
+            multi_turn,
+        ) in self._done
+
+    def done_count(self) -> int:
+        return len(self._done)
 
     # -- low-level ---------------------------------------------------------
     def write_row(self, row: AuditRow) -> None:
         with self.path.open("a", encoding="utf-8") as f:
             f.write(row.to_jsonl() + "\n")
+        self._done.add((
+            row.instance_id, row.axis, row.attack_transform or "", row.multi_turn,
+        ))
 
     def write_rows(self, rows: Iterable[AuditRow]) -> None:
         with self.path.open("a", encoding="utf-8") as f:
             for row in rows:
                 f.write(row.to_jsonl() + "\n")
+                self._done.add((
+                    row.instance_id, row.axis, row.attack_transform or "", row.multi_turn,
+                ))
 
     # -- ScoreResult helper ------------------------------------------------
     def write_score(
@@ -140,4 +187,24 @@ class AuditWriter:
         return row
 
 
-__all__ = ["AuditWriter", "AuditRow", "new_run_id"]
+def latest_run_id(path: str | os.PathLike) -> str | None:
+    """Return the most-recently-seen run_id in a JSONL audit log, or None."""
+    p = Path(path)
+    if not p.exists():
+        return None
+    last: str | None = None
+    with p.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("run_id"):
+                last = row["run_id"]
+    return last
+
+
+__all__ = ["AuditWriter", "AuditRow", "new_run_id", "latest_run_id"]

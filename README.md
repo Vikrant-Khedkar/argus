@@ -78,12 +78,21 @@ print(report.to_underwriting_memo(vendor_name="gpt-4o-mini"))
 **Run the bundled examples:**
 
 ```bash
-uv run python examples/quickstart.py        # 10 safety probes, single judge
+uv run python examples/quickstart.py        # ~10 safety probes, classifier-final
+uv run python examples/audit_sample.py      # classifier + N% LLM-judge audit
 uv run python examples/custom_axis.py       # define a regulatory_compliance axis
 uv run python examples/multi_turn_audit.py  # 5 multi-turn attack scenarios
 uv run python examples/guardrail_lift.py    # A/B with vs without GuardrailedProvider
 uv run python examples/legion_mode.py       # 3-judge ensemble with disagreement
+uv run python examples/kitchen_sink.py      # every feature in one run, ~75 min
+uv run python examples/kitchen_sink.py --resume    # resume if it died
 ```
+
+**Resumable runs.** `Evaluator.audit(probes, resume_run_id="latest")` skips
+the inference + scoring calls behind audit rows that already exist in the
+JSONL — pass an explicit run_id, the literal `"latest"`, or set
+`ARGUS_RESUME=<run_id>` in the env. The JSONL is the durable source of
+truth; the SQLite index is rebuilt from it on each `audit()` call.
 
 **Evaluating the strongest models (e.g. Opus 4.7):** the failure mode is the judge refusing to engage with extreme content (self-refusal). Argus's defence is policy-level: safety + toxicity axes are **classifier-primary** (Llama Guard / Perspective don't refuse — they classify), with LLM-judge as fallback only when the classifier is uncertain. For pure LLM-judge axes (discrimination, calibration), Legion mode mitigates self-refusal: if one judge refuses, the other two still vote, and disagreement is recorded.
 

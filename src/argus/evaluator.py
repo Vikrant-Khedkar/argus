@@ -6,19 +6,22 @@ multi-turn), the Evaluator:
   2. For each probe × transform, generates the assistant response, scores it
      on every configured axis, writes one AuditRow per (probe, transform, axis)
   3. Returns an AuditReport bound to the run
+
+Resumable: pass `resume_run_id=...` (or `resume_run_id="latest"`) to continue
+an interrupted run. Rows already in the JSONL for that run_id are skipped,
+including the LLM-inference + scoring calls behind them.
 """
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
-from pathlib import Path
 
 from .conversation import ConversationProbe, score_conversation
 from .eval_config import EvalConfig
 from .probes import LiabilityProbe
 from .scorers.base import Scorer
 from .storage import AuditIndex, AuditReport, AuditWriter
+from .storage.writer import latest_run_id
 from .transforms.base import AttackTransform
 
 
@@ -40,14 +43,28 @@ class Evaluator:
         probes: list[LiabilityProbe] | list[ConversationProbe],
         compare_to: str | None = None,
         vendor_name: str = "(vendor)",
+        resume_run_id: str | None = None,
     ) -> AuditReport:
         """Run every probe through every transform on every axis. Return report.
 
-        `compare_to` is an optional baseline run id; if provided, the
-        returned report's `to_underwriting_memo` will render lift vs that run.
+        Args:
+            probes: list of LiabilityProbe (single-turn) and/or
+                ConversationProbe (multi-turn). Mixed lists are supported.
+            compare_to: optional baseline run id for the memo's lift table.
+            vendor_name: passed through for memo rendering.
+            resume_run_id: if set, continue an existing run by skipping
+                (instance_id, axis, transform, multi_turn) tuples already in
+                the JSONL. Pass the literal string ``"latest"`` to auto-pick
+                the most-recent run id in the log.
         """
-        writer = AuditWriter(self.config.audit_log_path)
+        if resume_run_id == "latest":
+            resume_run_id = latest_run_id(self.config.audit_log_path)
+            if resume_run_id is None:
+                print("[resume] no existing log, starting a fresh run")
+        writer = AuditWriter(self.config.audit_log_path, run_id=resume_run_id)
         run_id = writer.run_id
+        if resume_run_id and writer.done_count():
+            print(f"[resume] {run_id} — {writer.done_count()} rows already complete, skipping those")
 
         for probe in probes:
             if isinstance(probe, ConversationProbe):
@@ -62,6 +79,15 @@ class Evaluator:
     # -- single-turn -------------------------------------------------------
     def _audit_single(self, probe: LiabilityProbe, writer: AuditWriter) -> None:
         for transform in self.transforms:
+            transform_tag = transform.name if transform.name != "identity" else None
+            # If every axis is already done for this (probe, transform), skip
+            # the inference call entirely.
+            if all(
+                writer.is_done(probe.id, axis, transform_tag)
+                for axis in self.scorers
+            ):
+                continue
+
             transformed = transform.apply(probe)
             if transformed.is_multi_turn and transformed.messages:
                 messages = list(transformed.messages)
@@ -75,6 +101,8 @@ class Evaluator:
             response = self.provider.chat(messages)
 
             for axis, scorer in self.scorers.items():
+                if writer.is_done(probe.id, axis, transform_tag):
+                    continue
                 score = scorer.score(prompt=user_msg, response=response)
                 score.tier = self.tier_mapping.map(score.value)
                 writer.write_score(
@@ -83,12 +111,14 @@ class Evaluator:
                     prompt=user_msg,
                     response=response,
                     score=score,
-                    attack_transform=transform.name if transform.name != "identity" else None,
+                    attack_transform=transform_tag,
                 )
 
     # -- multi-turn --------------------------------------------------------
     def _audit_conversation(self, probe: ConversationProbe, writer: AuditWriter) -> None:
         for axis, scorer in self.scorers.items():
+            if writer.is_done(probe.id, axis, None, multi_turn=True):
+                continue
             result = score_conversation(
                 probe=probe,
                 provider=self.provider,

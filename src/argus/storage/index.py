@@ -65,11 +65,20 @@ class AuditIndex:
             conn.close()
 
     # -- ingestion ---------------------------------------------------------
-    def build_from_jsonl(self, jsonl_path: str | os.PathLike) -> int:
-        """Append every row in the JSONL file to the index. Returns row count."""
+    def build_from_jsonl(
+        self, jsonl_path: str | os.PathLike, replace: bool = True,
+    ) -> int:
+        """Build the SQLite index from a JSONL audit log. Returns row count.
+
+        When `replace=True` (default) the existing rows are wiped first —
+        the JSONL is the durable source of truth and the index is
+        regenerable. Set `replace=False` to append instead.
+        """
         path = Path(jsonl_path)
         n = 0
         with self._conn() as c, path.open("r", encoding="utf-8") as f:
+            if replace:
+                c.execute("DELETE FROM audit_rows")
             for line in f:
                 line = line.strip()
                 if not line:
