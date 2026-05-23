@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -73,6 +74,7 @@ class AuditWriter:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.run_id = run_id or new_run_id()
         self._done: set[tuple[str, str, str, bool]] = set()
+        self._lock = threading.Lock()
         if run_id and self.path.exists():
             self._load_done()
 
@@ -112,21 +114,23 @@ class AuditWriter:
     def done_count(self) -> int:
         return len(self._done)
 
-    # -- low-level ---------------------------------------------------------
+    # -- low-level (thread-safe) ------------------------------------------
     def write_row(self, row: AuditRow) -> None:
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(row.to_jsonl() + "\n")
-        self._done.add((
-            row.instance_id, row.axis, row.attack_transform or "", row.multi_turn,
-        ))
+        with self._lock:
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write(row.to_jsonl() + "\n")
+            self._done.add((
+                row.instance_id, row.axis, row.attack_transform or "", row.multi_turn,
+            ))
 
     def write_rows(self, rows: Iterable[AuditRow]) -> None:
-        with self.path.open("a", encoding="utf-8") as f:
-            for row in rows:
-                f.write(row.to_jsonl() + "\n")
-                self._done.add((
-                    row.instance_id, row.axis, row.attack_transform or "", row.multi_turn,
-                ))
+        with self._lock:
+            with self.path.open("a", encoding="utf-8") as f:
+                for row in rows:
+                    f.write(row.to_jsonl() + "\n")
+                    self._done.add((
+                        row.instance_id, row.axis, row.attack_transform or "", row.multi_turn,
+                    ))
 
     # -- ScoreResult helper ------------------------------------------------
     def write_score(

@@ -7,6 +7,13 @@ multi-turn), the Evaluator:
      on every configured axis, writes one AuditRow per (probe, transform, axis)
   3. Returns an AuditReport bound to the run
 
+Concurrency:
+  - `axis_workers` (default 4) — score every axis inside one probe in
+    parallel. Axes are independent; safe everywhere.
+  - `probe_workers` (default 1) — N probes in flight at once. Bound this
+    to your slowest dependency (Modal single-GPU container, OpenRouter
+    per-minute limit). Default off to avoid surprising rate-limit issues.
+
 Resumable: pass `resume_run_id=...` (or `resume_run_id="latest"`) to continue
 an interrupted run. Rows already in the JSONL for that run_id are skipped,
 including the LLM-inference + scoring calls behind them.
@@ -14,7 +21,9 @@ including the LLM-inference + scoring calls behind them.
 
 from __future__ import annotations
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 try:
@@ -52,6 +61,8 @@ class Evaluator:
         vendor_name: str = "(vendor)",
         resume_run_id: str | None = None,
         progress: bool = True,
+        axis_workers: int = 4,
+        probe_workers: int = 1,
     ) -> AuditReport:
         """Run every probe through every transform on every axis. Return report.
 
@@ -66,6 +77,10 @@ class Evaluator:
                 the most-recent run id in the log.
             progress: show a tqdm progress bar with live throughput. Falls
                 back to plain prints if tqdm isn't installed.
+            axis_workers: thread-pool size for axis-parallel scoring inside
+                one probe. Default 4.
+            probe_workers: thread-pool size for probe-parallel execution
+                across the input list. Default 1 (sequential — opt-in).
         """
         if resume_run_id == "latest":
             resume_run_id = latest_run_id(self.config.audit_log_path)
@@ -76,31 +91,45 @@ class Evaluator:
         if resume_run_id and writer.done_count():
             print(f"[resume] {run_id} — {writer.done_count()} rows already complete, skipping those")
 
-        # Live counters surfaced in the tqdm postfix
         stats = {"infer": 0, "score": 0, "skip": 0, "rows": 0, "t0": time.time()}
+        stats_lock = threading.Lock()
         bar = self._make_bar(len(probes), progress)
+        bar_lock = threading.Lock()
 
-        try:
-            for probe in probes:
-                if isinstance(probe, ConversationProbe):
-                    self._audit_conversation(probe, writer, stats)
-                else:
-                    self._audit_single(probe, writer, stats)
-                if bar is not None:
+        def _bump(**deltas: int) -> None:
+            with stats_lock:
+                for k, v in deltas.items():
+                    stats[k] += v
+
+        def process(probe) -> None:
+            if isinstance(probe, ConversationProbe):
+                self._audit_conversation(probe, writer, _bump, axis_workers)
+            else:
+                self._audit_single(probe, writer, _bump, axis_workers)
+            if bar is not None:
+                with bar_lock:
                     bar.set_postfix(
                         rows=stats["rows"], infer=stats["infer"],
                         score=stats["score"], skip=stats["skip"],
                         refresh=False,
                     )
                     bar.update(1)
-                else:
-                    elapsed = time.time() - stats["t0"]
-                    print(
-                        f"  [{stats['rows']:>4} rows] {probe.id:<28} "
-                        f"infer={stats['infer']} score={stats['score']} "
-                        f"skip={stats['skip']}  t={elapsed:.0f}s",
-                        flush=True,
-                    )
+            else:
+                elapsed = time.time() - stats["t0"]
+                print(
+                    f"  [{stats['rows']:>4} rows] {probe.id:<28} "
+                    f"infer={stats['infer']} score={stats['score']} "
+                    f"skip={stats['skip']}  t={elapsed:.0f}s",
+                    flush=True,
+                )
+
+        try:
+            if probe_workers > 1:
+                with ThreadPoolExecutor(max_workers=probe_workers) as ex:
+                    list(ex.map(process, probes))
+            else:
+                for p in probes:
+                    process(p)
         finally:
             if bar is not None:
                 bar.close()
@@ -109,6 +138,7 @@ class Evaluator:
             f"  done · rows={stats['rows']} infer={stats['infer']} "
             f"score={stats['score']} skip={stats['skip']} "
             f"in {time.time() - stats['t0']:.0f}s"
+            f" · concurrency: axis={axis_workers} probe={probe_workers}"
         )
 
         index = AuditIndex(self.config.audit_db_path)
@@ -123,17 +153,19 @@ class Evaluator:
 
     # -- single-turn -------------------------------------------------------
     def _audit_single(
-        self, probe: LiabilityProbe, writer: AuditWriter, stats: dict,
+        self,
+        probe: LiabilityProbe,
+        writer: AuditWriter,
+        bump,
+        axis_workers: int,
     ) -> None:
         for transform in self.transforms:
             transform_tag = transform.name if transform.name != "identity" else None
-            # If every axis is already done for this (probe, transform), skip
-            # the inference call entirely.
             if all(
                 writer.is_done(probe.id, axis, transform_tag)
                 for axis in self.scorers
             ):
-                stats["skip"] += len(self.scorers)
+                bump(skip=len(self.scorers))
                 continue
 
             transformed = transform.apply(probe)
@@ -147,41 +179,49 @@ class Evaluator:
                     messages.append({"role": "system", "content": self.config.system_prompt})
                 messages.append({"role": "user", "content": user_msg})
             response = self.provider.chat(messages)
-            stats["infer"] += 1
+            bump(infer=1)
 
-            for axis, scorer in self.scorers.items():
-                if writer.is_done(probe.id, axis, transform_tag):
-                    stats["skip"] += 1
-                    continue
-                score = scorer.score(prompt=user_msg, response=response)
-                score.tier = self.tier_mapping.map(score.value)
-                writer.write_score(
-                    instance_id=probe.id,
-                    axis=axis,
-                    prompt=user_msg,
-                    response=response,
-                    score=score,
-                    attack_transform=transform_tag,
-                )
-                stats["score"] += 1
-                stats["rows"] += 1
+            self._score_axes_parallel(
+                probe_id=probe.id,
+                user_msg=user_msg,
+                response=response,
+                transform_tag=transform_tag,
+                multi_turn=False,
+                writer=writer,
+                bump=bump,
+                axis_workers=axis_workers,
+            )
 
     # -- multi-turn --------------------------------------------------------
     def _audit_conversation(
-        self, probe: ConversationProbe, writer: AuditWriter, stats: dict,
+        self,
+        probe: ConversationProbe,
+        writer: AuditWriter,
+        bump,
+        axis_workers: int,
     ) -> None:
-        for axis, scorer in self.scorers.items():
+        # All-axes-already-done short-circuit (no inference at all)
+        if all(
+            writer.is_done(probe.id, axis, None, multi_turn=True)
+            for axis in self.scorers
+        ):
+            bump(skip=len(self.scorers))
+            return
+
+        # Score-axes-in-parallel needs a single transcript. Generate it once,
+        # then let each axis score the final response in parallel.
+        def _score_one_axis(item):
+            axis, scorer = item
             if writer.is_done(probe.id, axis, None, multi_turn=True):
-                stats["skip"] += 1
-                continue
+                bump(skip=1)
+                return
             result = score_conversation(
                 probe=probe,
                 provider=self.provider,
                 scorer=scorer,
                 system=self.config.system_prompt,
             )
-            stats["infer"] += len(probe.turns)
-            stats["score"] += 1
+            bump(infer=len(probe.turns), score=1)
             score = result.final_score
             score.tier = self.tier_mapping.map(score.value)
             transcript = "\n\n".join(
@@ -195,7 +235,56 @@ class Evaluator:
                 score=score,
                 multi_turn=True,
             )
-            stats["rows"] += 1
+            bump(rows=1)
+
+        # Multi-turn axis-parallelism re-runs the conversation per axis
+        # (each axis re-walks the provider). That's deliberate — the scorer
+        # often consumes per-turn intermediates, and re-execution gives each
+        # axis a clean isolated transcript. For latency-sensitive runs,
+        # users can set axis_workers=1 to share the transcript across axes.
+        if axis_workers > 1:
+            with ThreadPoolExecutor(max_workers=axis_workers) as ex:
+                list(ex.map(_score_one_axis, self.scorers.items()))
+        else:
+            for item in self.scorers.items():
+                _score_one_axis(item)
+
+    # -- shared: score every axis on one (probe, transform) tuple ----------
+    def _score_axes_parallel(
+        self,
+        probe_id: str,
+        user_msg: str,
+        response: str,
+        transform_tag: str | None,
+        multi_turn: bool,
+        writer: AuditWriter,
+        bump,
+        axis_workers: int,
+    ) -> None:
+        def _score_one(item):
+            axis, scorer = item
+            if writer.is_done(probe_id, axis, transform_tag, multi_turn=multi_turn):
+                bump(skip=1)
+                return
+            score = scorer.score(prompt=user_msg, response=response)
+            score.tier = self.tier_mapping.map(score.value)
+            writer.write_score(
+                instance_id=probe_id,
+                axis=axis,
+                prompt=user_msg,
+                response=response,
+                score=score,
+                attack_transform=transform_tag,
+                multi_turn=multi_turn,
+            )
+            bump(score=1, rows=1)
+
+        if axis_workers > 1 and len(self.scorers) > 1:
+            with ThreadPoolExecutor(max_workers=axis_workers) as ex:
+                list(ex.map(_score_one, self.scorers.items()))
+        else:
+            for item in self.scorers.items():
+                _score_one(item)
 
 
 __all__ = ["Evaluator"]

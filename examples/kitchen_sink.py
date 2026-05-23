@@ -141,6 +141,8 @@ report_base = Evaluator(EvalConfig.from_dict(BASE_CONFIG)).audit(
     all_probes,
     vendor_name="Modal Qwen2.5-1.5B (baseline)",
     resume_run_id=RESUME,
+    axis_workers=4,    # score all 4 axes in parallel per probe
+    probe_workers=4,   # 4 probes in flight (Modal serializes; OpenRouter parallelizes)
 )
 baseline_run = report_base.run_id
 print(f"    baseline run_id: {baseline_run}")
@@ -159,7 +161,10 @@ guarded_cfg = {
     },
 }
 report_g = Evaluator(EvalConfig.from_dict(guarded_cfg)).audit(
-    all_probes, vendor_name="Modal Qwen2.5-1.5B (guarded)",
+    all_probes,
+    vendor_name="Modal Qwen2.5-1.5B (guarded)",
+    axis_workers=4,
+    probe_workers=4,
 )
 guarded_run = report_g.run_id
 print(f"    guarded run_id: {guarded_run}")

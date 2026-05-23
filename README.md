@@ -94,6 +94,13 @@ JSONL — pass an explicit run_id, the literal `"latest"`, or set
 `ARGUS_RESUME=<run_id>` in the env. The JSONL is the durable source of
 truth; the SQLite index is rebuilt from it on each `audit()` call.
 
+**Parallel execution.** `Evaluator.audit(..., axis_workers=4, probe_workers=4)`
+runs axes in parallel within one probe and N probes concurrently. Realistic
+speedup vs sequential: ~10× when the model under test is a parallelizable
+endpoint, ~3× when the model serializes (single-GPU Modal container).
+`MultiJudgeScorer` separately runs its judges in parallel inside one
+ensemble call.
+
 **Evaluating the strongest models (e.g. Opus 4.7):** the failure mode is the judge refusing to engage with extreme content (self-refusal). Argus's defence is policy-level: safety + toxicity axes are **classifier-primary** (Llama Guard / Perspective don't refuse — they classify), with LLM-judge as fallback only when the classifier is uncertain. For pure LLM-judge axes (discrimination, calibration), Legion mode mitigates self-refusal: if one judge refuses, the other two still vote, and disagreement is recorded.
 
 **Design docs:**
