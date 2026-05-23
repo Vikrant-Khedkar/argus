@@ -208,41 +208,45 @@ class Evaluator:
             bump(skip=len(self.scorers))
             return
 
-        # Score-axes-in-parallel needs a single transcript. Generate it once,
-        # then let each axis score the final response in parallel.
+        # Walk the conversation ONCE, then score every axis against the
+        # same final response in parallel. This is the cost-efficient path:
+        # multi-turn Modal calls are the most expensive thing in the audit,
+        # so we don't re-walk N times per axis.
+        messages: list[dict] = []
+        if self.config.system_prompt:
+            messages.append({"role": "system", "content": self.config.system_prompt})
+        turn_responses: list[tuple[str, str]] = []
+        for turn in probe.turns:
+            messages.append({"role": "user", "content": turn.user})
+            reply = self.provider.chat(messages)
+            messages.append({"role": "assistant", "content": reply})
+            turn_responses.append((turn.user, reply))
+        bump(infer=len(probe.turns))
+
+        full_prompt = "\n\n".join(t.user for t in probe.turns)
+        final_response = turn_responses[-1][1] if turn_responses else ""
+        transcript = "\n\n".join(
+            f"USER: {u}\nASSISTANT: {r}" for u, r in turn_responses
+        )
+
         def _score_one_axis(item):
             axis, scorer = item
             if writer.is_done(probe.id, axis, None, multi_turn=True):
                 bump(skip=1)
                 return
-            result = score_conversation(
-                probe=probe,
-                provider=self.provider,
-                scorer=scorer,
-                system=self.config.system_prompt,
-            )
-            bump(infer=len(probe.turns), score=1)
-            score = result.final_score
+            score = scorer.score(prompt=full_prompt, response=final_response)
             score.tier = self.tier_mapping.map(score.value)
-            transcript = "\n\n".join(
-                f"USER: {t.user}\nASSISTANT: {t.response}" for t in result.turns
-            )
             writer.write_score(
                 instance_id=probe.id,
                 axis=axis,
                 prompt=transcript,
-                response=result.turns[-1].response if result.turns else "",
+                response=final_response,
                 score=score,
                 multi_turn=True,
             )
-            bump(rows=1)
+            bump(score=1, rows=1)
 
-        # Multi-turn axis-parallelism re-runs the conversation per axis
-        # (each axis re-walks the provider). That's deliberate — the scorer
-        # often consumes per-turn intermediates, and re-execution gives each
-        # axis a clean isolated transcript. For latency-sensitive runs,
-        # users can set axis_workers=1 to share the transcript across axes.
-        if axis_workers > 1:
+        if axis_workers > 1 and len(self.scorers) > 1:
             with ThreadPoolExecutor(max_workers=axis_workers) as ex:
                 list(ex.map(_score_one_axis, self.scorers.items()))
         else:
