@@ -52,6 +52,7 @@ import yaml
 from .providers.base import ChatProvider, get_provider
 from .providers.guardrailed import GuardrailedProvider
 from .guardrails.preflight import PreFlightPatternGuard, PreFlightClassifierGuard
+from .guardrails.embedding_guard import PreFlightEmbeddingGuard
 from .scorers.base import Scorer, get_scorer_class
 from .scorers.composite import CompositeScorer
 from .scorers.multi_judge import MultiJudgeScorer
@@ -163,6 +164,16 @@ class EvalConfig:
                 kind = entry.get("type", "classifier")
                 if kind == "pattern":
                     out.append(PreFlightPatternGuard())
+                    continue
+                if kind == "embedding":
+                    out.append(PreFlightEmbeddingGuard(
+                        fail_index=entry["fail_index"],
+                        threshold=float(entry.get("threshold", 0.85)),
+                        top_k=int(entry.get("top_k", 5)),
+                        embedder_model=entry.get(
+                            "embedder_model", "BAAI/bge-small-en-v1.5"),
+                        label=entry.get("label", "embedding"),
+                    ))
                     continue
                 scorer_kind = entry.get("scorer", "prompt_guard")
                 model = entry.get("model")

@@ -13,10 +13,20 @@ Post-flight runs after the model call:
 
 from .preflight import PreFlightPatternGuard, PreFlightClassifierGuard
 from .postflight import PostFlightRegenGuard, PostFlightHardRefuseGuard
+from .embedding_guard import (
+    PreFlightEmbeddingGuard,
+    FailIndex,
+    refresh_fail_index,
+    DEFAULT_EMBED_MODEL,
+)
 
 __all__ = [
     "PreFlightPatternGuard",
     "PreFlightClassifierGuard",
+    "PreFlightEmbeddingGuard",
+    "FailIndex",
+    "refresh_fail_index",
+    "DEFAULT_EMBED_MODEL",
     "PostFlightRegenGuard",
     "PostFlightHardRefuseGuard",
 ]

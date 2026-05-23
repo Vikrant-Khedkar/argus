@@ -31,6 +31,7 @@ from argus import (
     load_factual_probes,
     load_pii_probes,
     load_safety_probes,
+    refresh_fail_index,
 )
 
 # -----------------------------------------------------------------------------
@@ -222,19 +223,54 @@ report_base = Evaluator(EvalConfig.from_dict(BASE_CONFIG)).audit(
 baseline_run = report_base.run_id
 print(f"    baseline run_id: {baseline_run}")
 print(f"    rows written: {report_base.row_count()}")
+
+# Seed the per-model fail-index from this baseline's Llama-Guard-unsafe
+# rows BEFORE Run 2 fires. Run 2's embedding guard will then block
+# paraphrases of the actual exploits we just observed on this model.
+print(f"\n>>> Refreshing fail-index for {MODEL_SLUG}")
+seed_stats = refresh_fail_index(
+    db_path=BASE_CONFIG["audit_db_path"],
+    run_id=baseline_run,
+    fail_index_path=FAIL_INDEX_PATH,
+)
+print(f"    fail-index: {seed_stats['index_size_before']} -> "
+      f"{seed_stats['index_size_after']} "
+      f"(+{seed_stats['new_entries']} new, "
+      f"{seed_stats['deduped']} deduped)")
 print()
 
 # -----------------------------------------------------------------------------
 # Run 2 — same setup but provider wrapped with PreFlightPatternGuard
 # -----------------------------------------------------------------------------
 print(">>> Run 2/2: with GuardrailedProvider (pre-flight pattern guard)")
+FAIL_INDEX_PATH = str(OUT / f"fail_index_{MODEL_SLUG}.npz")
+
 guarded_cfg = {
     **BASE_CONFIG,
     "provider": {
         **BASE_CONFIG["provider"],
-        # Cascade: regex (instant, free) -> Llama-Prompt-Guard-2 (86M
-        # classifier, ~$0.0001/call, catches paraphrases regex misses)
-        "guardrail": {"pre_flight": ["pattern", "prompt_guard"]},
+        # 4-tier pre-flight cascade — each tier catches what the prior
+        # missed, costs more, fires less often:
+        #
+        #   pattern        regex,      instant,    free      catches obvious surface forms
+        #   embedding      bge-small,  ~5ms,       free      catches paraphrases of past failures
+        #   prompt_guard   86M,        ~100ms,     $0.0001   catches novel injection patterns
+        #
+        # The embedding tier is per-model — it learns from this model's
+        # exploits and only blocks paraphrases of attacks that previously
+        # broke THIS model. Fresh runs start with an empty index; the
+        # refresh_fail_index call below seeds it from the baseline audit.
+        "guardrail": {
+            "pre_flight": [
+                "pattern",
+                {
+                    "type": "embedding",
+                    "fail_index": FAIL_INDEX_PATH,
+                    "threshold": 0.85,
+                },
+                "prompt_guard",
+            ],
+        },
     },
 }
 report_g = Evaluator(EvalConfig.from_dict(guarded_cfg)).audit(

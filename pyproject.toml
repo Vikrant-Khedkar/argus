@@ -15,6 +15,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "PyYAML>=6.0.0",
     "presidio-analyzer>=2.2.0",
+    "sentence-transformers>=3.0.0",
     "scrapegraph-py>=2.1.0",
     "streamlit>=1.57.0",
     "tqdm>=4.67.0",

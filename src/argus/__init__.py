@@ -17,6 +17,9 @@ from .providers import (
 from .guardrails import (
     PreFlightPatternGuard,
     PreFlightClassifierGuard,
+    PreFlightEmbeddingGuard,
+    FailIndex,
+    refresh_fail_index,
     PostFlightRegenGuard,
     PostFlightHardRefuseGuard,
 )
@@ -116,6 +119,9 @@ __all__ = [
     # Guardrails
     "PreFlightPatternGuard",
     "PreFlightClassifierGuard",
+    "PreFlightEmbeddingGuard",
+    "FailIndex",
+    "refresh_fail_index",
     "PostFlightRegenGuard",
     "PostFlightHardRefuseGuard",
     # v1 legacy
