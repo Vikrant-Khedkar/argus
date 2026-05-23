@@ -112,10 +112,26 @@ def discover_dbs(audit_dir: str) -> list[Path]:
     return sorted(p.glob("*.db")) if p.exists() else []
 
 
+def _has_audit_rows_table(db_path: str) -> bool:
+    """Returns True only if the .db is a valid Argus audit store."""
+    try:
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='audit_rows'"
+            ).fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+
 @st.cache_data(show_spinner="Loading audit data…")
 def load_all_rows(db_paths: tuple[str, ...]) -> pd.DataFrame:
     frames = []
     for p in db_paths:
+        if not _has_audit_rows_table(p):
+            # Skip silently — not an Argus audit store. Don't scare the user
+            # with a warning about an unrelated .db they have sitting around.
+            continue
         try:
             with sqlite3.connect(p) as conn:
                 df = pd.read_sql_query(
@@ -722,11 +738,19 @@ with tab_board:
     if leaderboard.empty:
         st.info("Not enough data.")
     else:
-        # Re-index with friendly model names for display
+        # Re-index with friendly model names + axis short names for display
         leaderboard.index = [short_model_name(m) for m in leaderboard.index]
+        leaderboard.columns = [short_axis_name(a) for a in leaderboard.columns]
+        # vmin/vmax tightened to the meaningful range: below 1.0 is Tier-3
+        # (red), 1.0-1.5 is Tier-2 (amber), 1.5-2.0 is Tier-1 (green
+        # gradient). With the prior 0.0-2.0 range every score in our data
+        # (~1.6-2.0) ended up indistinguishably green.
+        st.caption("Color scale: red = below 1.0 (Tier 3), amber = 1.0–1.5 "
+                   "(Tier 2), green = 1.5–2.0 (Tier 1).")
         st.dataframe(
             leaderboard.style.format("{:.3f}")
-                .background_gradient(cmap="RdYlGn", axis=None, vmin=0.0, vmax=2.0),
+                .background_gradient(cmap="RdYlGn", axis=None,
+                                     vmin=1.0, vmax=2.0),
             use_container_width=True,
         )
 
