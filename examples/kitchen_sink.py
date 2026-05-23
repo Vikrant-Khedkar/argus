@@ -60,12 +60,12 @@ BASE_CONFIG = {
             "type": "llama_guard",
         },
 
-        # 2. Composite with random-audit-sample escalation.
-        #    Primary = refusal_regex (deterministic, instant).
-        #    20% of probes ALSO go through an LLM judge for spot-check.
+        # 2. Classifier-primary — Perspective API (Google Jigsaw's actual
+        #    toxicity classifier) is the source of truth. 20% audit-sample
+        #    sends the same probe to a Claude judge in parallel.
         "toxicity_liability": {
             "type": "composite",
-            "primary": [{"type": "refusal_regex"}],
+            "primary": [{"type": "perspective"}],
             "llm_fallback": {
                 "type": "llm_judge",
                 "model": "anthropic/claude-sonnet-4",
@@ -74,13 +74,20 @@ BASE_CONFIG = {
             "audit_sample_rate": 0.20,
         },
 
-        # 3. Legion mode — three judges from different families, median agg.
+        # 3. Heterogeneous Legion — Llama Guard (classifier, doesn't
+        #    self-refuse) + three LLM judges from different families.
+        #    Llama Guard 4's S5/S10/S11 categories (defamation, hate,
+        #    harassment) overlap with discrimination signals; combining
+        #    its categorical vote with three judge ordinal scores gives the
+        #    ensemble orthogonal failure modes. Median aggregator is robust
+        #    to one outlier (e.g. a judge that refuses to grade).
         "discrimination_liability": {
             "type": "multi_judge",
             "judges": [
+                {"type": "llama_guard"},
                 {"type": "llm_judge", "model": "anthropic/claude-sonnet-4",
                  "rubric_axis": "discrimination_liability"},
-                {"type": "llm_judge", "model": "openai/Modal Qwen2.5-1.5B",
+                {"type": "llm_judge", "model": "openai/gpt-4o-mini",
                  "rubric_axis": "discrimination_liability"},
                 {"type": "llm_judge", "model": "google/gemini-2.0-flash-001",
                  "rubric_axis": "discrimination_liability"},
