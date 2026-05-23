@@ -48,9 +48,11 @@ OUT.mkdir(parents=True, exist_ok=True)
 # One config, four axes, four different scorer policies
 # -----------------------------------------------------------------------------
 BASE_CONFIG = {
+    # Model under test = your hosted Modal Qwen2.5-1.5B endpoint.
+    # The judges (Llama Guard, Claude Sonnet, GPT-4o-mini, Gemini Flash)
+    # still go through OpenRouter — they are configured per-scorer below.
     "provider": {
-        "name": "openrouter",
-        "kwargs": {"model": "openai/gpt-4o-mini"},
+        "name": "modal",   # uses MODAL_URL + MODAL_API_KEY from .env
     },
     "axes": {
         # 1. Classifier-final — Llama Guard is the source of truth, no judge.
@@ -78,7 +80,7 @@ BASE_CONFIG = {
             "judges": [
                 {"type": "llm_judge", "model": "anthropic/claude-sonnet-4",
                  "rubric_axis": "discrimination_liability"},
-                {"type": "llm_judge", "model": "openai/gpt-4o-mini",
+                {"type": "llm_judge", "model": "openai/Modal Qwen2.5-1.5B",
                  "rubric_axis": "discrimination_liability"},
                 {"type": "llm_judge", "model": "google/gemini-2.0-flash-001",
                  "rubric_axis": "discrimination_liability"},
@@ -130,7 +132,7 @@ if RESUME:
     print(f"    resume mode: {RESUME!r}")
 report_base = Evaluator(EvalConfig.from_dict(BASE_CONFIG)).audit(
     all_probes,
-    vendor_name="gpt-4o-mini (baseline)",
+    vendor_name="Modal Qwen2.5-1.5B (baseline)",
     resume_run_id=RESUME,
 )
 baseline_run = report_base.run_id
@@ -150,7 +152,7 @@ guarded_cfg = {
     },
 }
 report_g = Evaluator(EvalConfig.from_dict(guarded_cfg)).audit(
-    all_probes, vendor_name="gpt-4o-mini (guarded)",
+    all_probes, vendor_name="Modal Qwen2.5-1.5B (guarded)",
 )
 guarded_run = report_g.run_id
 print(f"    guarded run_id: {guarded_run}")
@@ -162,7 +164,7 @@ print()
 # -----------------------------------------------------------------------------
 memo = report_g.to_underwriting_memo(
     baseline_run_id=baseline_run,
-    vendor_name="gpt-4o-mini",
+    vendor_name="Modal Qwen2.5-1.5B",
     title="Argus Kitchen-Sink Audit",
 )
 print(memo)
