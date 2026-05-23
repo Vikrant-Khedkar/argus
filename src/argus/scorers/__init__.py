@@ -10,6 +10,7 @@ PerspectiveAPIScorer, RefusalRegexScorer, KeyFactsScorer, HedgePhraseScorer.
 
 from .base import Scorer, register_scorer, get_scorer_class, list_scorers
 from .composite import CompositeScorer
+from .multi_judge import MultiJudgeScorer
 
 __all__ = [
     "Scorer",
@@ -17,4 +18,5 @@ __all__ = [
     "get_scorer_class",
     "list_scorers",
     "CompositeScorer",
+    "MultiJudgeScorer",
 ]

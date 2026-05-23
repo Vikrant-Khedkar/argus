@@ -42,6 +42,7 @@ from .scorers import (
     get_scorer_class,
     list_scorers,
     CompositeScorer,
+    MultiJudgeScorer,
 )
 
 __version__ = "0.2.0-dev"
@@ -85,5 +86,6 @@ __all__ = [
     "get_scorer_class",
     "list_scorers",
     "CompositeScorer",
+    "MultiJudgeScorer",
     "__version__",
 ]
