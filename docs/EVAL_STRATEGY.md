@@ -7,8 +7,8 @@ modes that bite naive LLM-judge pipelines.
 
 | Axis | Primary signal | Why |
 |---|---|---|
-| **safety_liability** | classifier (Llama Guard 4 12B) | LLM judges hit *self-refusal* on extreme content. Llama Guard was trained to classify harm, not avoid engaging with it. |
-| **toxicity_liability** | classifier (Perspective API or RealToxicityPrompts judge) | Same self-refusal failure mode + Perspective is the industry-standard reference signal. |
+| **safety_liability** | classifier-final (Llama Guard 4 12B); optional N% audit-sample LLM judge | LLM judges hit *self-refusal* on extreme content. Llama Guard is trained to classify harm, not avoid engaging with it — and chat-API classifiers don't expose calibrated probabilities, so the right "second opinion" pattern is random audit sampling, not confidence-threshold cascade. |
+| **toxicity_liability** | classifier-final (Perspective API); optional N% audit-sample | Same self-refusal failure mode + Perspective is the industry-standard reference signal. |
 | **discrimination_liability** | LLM judge (multi-judge in Legion mode) | No classifier with sufficient breadth for nuanced bias detection. Multi-judge mitigates single-judge bias. |
 | **calibration_liability** | LLM judge w/ reference data | Detecting *confident wrongness* needs a model that can reason about claim strength. |
 | **output_liability** | reference-based + LLM judge fallback | `KeyFactsScorer` is deterministic for probes with ground-truth references; LLM judge takes the rest. |
@@ -89,10 +89,31 @@ Naive policy = one LLM judge per axis per probe. At Claude Sonnet 4 pricing
 that's ~$0.005 per probe per axis. 1000 probes × 7 axes = $35 just for
 scoring, before any retries.
 
-**Argus's mitigation:** `CompositeScorer` runs the cheap classifier first
-(~$0, ~50ms) and only spends the LLM-judge budget when the classifier's
-confidence is below `fallback_threshold`. Empirically this hits the LLM
-judge on ~15% of probes — ~85% cost reduction on safety/toxicity axes.
+**Argus's mitigation:** for safety + toxicity axes, the classifier
+(Llama Guard, Perspective) is **final** — no LLM judge is called for the
+hot path. This matches the deployed pattern at Anthropic / OpenAI /
+MLCommons AILuminate. Classifier cost is ~$0.0002/probe via OpenRouter,
+~25× cheaper than an LLM judge.
+
+For audit assurance you optionally **add** an LLM judge on a random N% of
+probes via `CompositeScorer(audit_sample_rate=0.15)` — the standard
+"spot-check the cheap model with the expensive one" pattern. The judge
+isn't a fallback; it's a parallel signal you can compare against the
+classifier offline.
+
+`CompositeScorer` exposes three escalation triggers, all standard:
+  - `audit_sample_rate` — random N% audit (Meta integrity, YouTube spam,
+    Stripe Radar all use this)
+  - `value_zone=(lo, hi)` — escalate when a primary returns a borderline
+    score (selective prediction; useful when primaries have a real ordinal
+    output)
+  - `fire_on_disagreement` — escalate when multiple primaries disagree by
+    more than a threshold (ensemble disagreement)
+
+What we explicitly do *not* do: threshold on a primary's self-reported
+`confidence` field. Chat-API classifiers like Llama Guard don't expose
+calibrated probabilities — that field would be a constant, so the trigger
+would be dead code.
 
 ## How to evaluate the strongest models (e.g. Opus 4.7)
 

@@ -172,15 +172,18 @@ class EvalConfig:
         if not kind:
             raise ValueError(f"Axis '{axis}' is missing 'type'")
 
-        # Composite: primary list + optional llm_fallback
+        # Composite: primary list + optional llm_fallback + explicit trigger
         if kind == "composite":
             primary = [self._build_one_scorer(axis, s) for s in spec.get("primary", [])]
             fb_spec = spec.get("llm_fallback")
             llm_fb = self._build_one_scorer(axis, fb_spec) if fb_spec else None
+            vz = spec.get("value_zone")
             return CompositeScorer(
                 primary=primary,
                 llm_fallback=llm_fb,
-                fallback_threshold=spec.get("fallback_threshold", 0.7),
+                audit_sample_rate=spec.get("audit_sample_rate", 0.0),
+                value_zone=tuple(vz) if vz else None,
+                fire_on_disagreement=spec.get("fire_on_disagreement"),
                 aggregator=spec.get("aggregator", "min"),
             )
 

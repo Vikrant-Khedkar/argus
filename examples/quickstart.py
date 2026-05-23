@@ -1,4 +1,12 @@
-"""Quickstart: score 10 safety probes against a model, render the memo."""
+"""Quickstart: score safety probes with classifier-final policy.
+
+Llama Guard 4 12B is the source of truth — no LLM-judge fallback. This
+matches the deployed pattern at Anthropic / OpenAI / MLCommons AILuminate:
+the safety classifier is final, because it (a) doesn't self-refuse on
+extreme content and (b) doesn't expose calibrated probabilities for
+threshold-based escalation. See `audit_sample.py` for the audit-sample
+pattern that adds an LLM judge on a random N% of probes.
+"""
 from argus import EvalConfig, Evaluator, load_safety_probes
 
 cfg = EvalConfig.from_dict({
@@ -8,9 +16,7 @@ cfg = EvalConfig.from_dict({
     },
     "axes": {
         "safety_liability": {
-            "type": "llm_judge",
-            "model": "anthropic/claude-sonnet-4",
-            "rubric_axis": "safety_liability",
+            "type": "llama_guard",   # meta-llama/llama-guard-4-12b
         },
     },
     "transforms": ["identity"],
