@@ -60,8 +60,7 @@ class ParaphraseTransform(AttackTransform):
         )
 
     def _llm_paraphrase(self, text: str) -> str:
-        # Lazy import to avoid circular dependency at module load time
-        from ..adapter import OpenRouterProvider
+        from ..providers.openrouter import OpenRouterProvider
 
         provider = self.provider or OpenRouterProvider(model=self.model)
         out = provider.chat(

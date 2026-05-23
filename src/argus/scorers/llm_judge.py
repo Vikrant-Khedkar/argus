@@ -12,7 +12,7 @@ import re
 
 from .base import register_scorer
 from .model_based import ModelBasedScorer
-from ..adapter import ChatProvider
+from ..providers.base import ChatProvider
 from ..types import Instance, ScoreResult
 
 JUDGE_INSTRUCTION = (

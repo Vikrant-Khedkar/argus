@@ -4,11 +4,20 @@ Public API.
 """
 
 # --- v1 (existing) — kept working via the legacy modules ---------------------
-from .adapter import (
+from .providers import (
     ChatProvider,
+    ProviderName,
+    get_provider,
     ModalProvider,
     OpenRouterProvider,
-    get_provider,
+    HTTPProvider,
+    HuggingFaceProvider,
+    GuardrailedProvider,
+)
+from .guardrails import (
+    PreFlightPatternGuard,
+    PostFlightRegenGuard,
+    PostFlightHardRefuseGuard,
 )
 from .memory import Conversation
 from .risk_score import (
@@ -79,11 +88,20 @@ from .scorers import (
 __version__ = "0.2.0-dev"
 
 __all__ = [
-    # v1
+    # Providers
     "ChatProvider",
+    "ProviderName",
+    "get_provider",
     "ModalProvider",
     "OpenRouterProvider",
-    "get_provider",
+    "HTTPProvider",
+    "HuggingFaceProvider",
+    "GuardrailedProvider",
+    # Guardrails
+    "PreFlightPatternGuard",
+    "PostFlightRegenGuard",
+    "PostFlightHardRefuseGuard",
+    # v1 legacy
     "Conversation",
     "RiskScorer",
     "LegacyRiskResult",

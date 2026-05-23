@@ -16,7 +16,8 @@ import time
 from abc import abstractmethod
 
 from .base import Scorer
-from ..adapter import ChatProvider, OpenRouterProvider
+from ..providers.base import ChatProvider
+from ..providers.openrouter import OpenRouterProvider
 from ..types import Instance, ScoreResult
 
 
