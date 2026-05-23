@@ -86,6 +86,10 @@ class EvalConfig:
     system_prompt: str | None = None
     multi_turn: bool = False
     rubrics: dict[str, str] = field(default_factory=dict)
+    # Deterministic by default — audits compare runs side-by-side, so
+    # temperature noise across runs would confound any lift table.
+    temperature: float = 0.0
+    max_tokens: int = 512
 
     # ---- IO --------------------------------------------------------------
     @classmethod
@@ -105,6 +109,8 @@ class EvalConfig:
             system_prompt=data.get("system_prompt"),
             multi_turn=data.get("multi_turn", False),
             rubrics=data.get("rubrics", {}),
+            temperature=float(data.get("temperature", 0.0)),
+            max_tokens=int(data.get("max_tokens", 512)),
         )
 
     # ---- builders --------------------------------------------------------

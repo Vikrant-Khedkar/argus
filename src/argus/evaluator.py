@@ -178,7 +178,11 @@ class Evaluator:
                 if self.config.system_prompt:
                     messages.append({"role": "system", "content": self.config.system_prompt})
                 messages.append({"role": "user", "content": user_msg})
-            response = self.provider.chat(messages)
+            response = self.provider.chat(
+                messages,
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+            )
             bump(infer=1)
 
             self._score_axes_parallel(
@@ -218,7 +222,11 @@ class Evaluator:
         turn_responses: list[tuple[str, str]] = []
         for turn in probe.turns:
             messages.append({"role": "user", "content": turn.user})
-            reply = self.provider.chat(messages)
+            reply = self.provider.chat(
+                messages,
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+            )
             messages.append({"role": "assistant", "content": reply})
             turn_responses.append((turn.user, reply))
         bump(infer=len(probe.turns))
