@@ -209,11 +209,18 @@ class Evaluator:
                 if self.config.system_prompt:
                     messages.append({"role": "system", "content": self.config.system_prompt})
                 messages.append({"role": "user", "content": user_msg})
-            response = self.provider.chat(
-                messages,
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
-            )
+            try:
+                response = self.provider.chat(
+                    messages,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                )
+            except Exception as e:  # noqa: BLE001
+                # Upstream provider rejected the prompt (Azure content
+                # filter, OpenRouter 400, network failure). Treat as a
+                # synthesised refusal so the scorers can still run — it
+                # IS a refusal, just one we didn't generate ourselves.
+                response = f"[INFERENCE_BLOCKED: {type(e).__name__}: {str(e)[:240]}]"
             bump(infer=1)
             guardrail_tag = self._capture_guardrail_actions()
 
@@ -258,11 +265,14 @@ class Evaluator:
         all_guard_actions: list[str] = []
         for turn in probe.turns:
             messages.append({"role": "user", "content": turn.user})
-            reply = self.provider.chat(
-                messages,
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
-            )
+            try:
+                reply = self.provider.chat(
+                    messages,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                )
+            except Exception as e:  # noqa: BLE001
+                reply = f"[INFERENCE_BLOCKED: {type(e).__name__}: {str(e)[:240]}]"
             messages.append({"role": "assistant", "content": reply})
             turn_responses.append((turn.user, reply))
             tag = self._capture_guardrail_actions()
