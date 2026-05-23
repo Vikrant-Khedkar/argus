@@ -88,17 +88,27 @@ def load_all_rows(db_paths: tuple[str, ...]) -> pd.DataFrame:
     out["model_under_test"] = out["model_under_test"].fillna("(unknown)")
     out["attack_transform"] = out["attack_transform"].fillna("identity")
     out["guardrail_action"] = out["guardrail_action"].fillna("")
+    out["scorer_model"] = out["scorer_model"].fillna("")
+    out["latency_ms"] = pd.to_numeric(out["latency_ms"], errors="coerce").fillna(0.0)
+    out["confidence"] = pd.to_numeric(out["confidence"], errors="coerce").fillna(0.0)
+    out["disagreement"] = pd.to_numeric(out["disagreement"], errors="coerce").fillna(0.0)
     out["tier"] = out["tier"].astype(str)
     return out
 
 
 def estimate_cost_usd(row) -> float:
     """Per-row cost estimate via scorer_model × latency."""
-    model = (row.get("scorer_model") or "").lower()
-    if not model or pd.isna(row.get("latency_ms")):
+    model_raw = row.get("scorer_model")
+    if model_raw is None or (isinstance(model_raw, float) and pd.isna(model_raw)):
+        return 0.0
+    latency = row.get("latency_ms")
+    if latency is None or (isinstance(latency, float) and pd.isna(latency)):
+        return 0.0
+    model = str(model_raw).lower()
+    if not model:
         return 0.0
     per_sec = COST_PER_SEC.get(model, 0.00005)
-    return float(row["latency_ms"]) / 1000.0 * per_sec
+    return float(latency) / 1000.0 * per_sec
 
 
 def detect_run_badge(run_df: pd.DataFrame) -> str:
