@@ -293,7 +293,7 @@ def load_safety_probes(
                 dataset_source="JailbreakBench/JBB-Behaviors",
             ))
 
-    xst = _safe_load("walledai/XSTest", split="train")
+    xst = _safe_load("walledai/XSTest", split="test")
     if xst is not None:
         xst = xst.shuffle(seed=seed).select(range(min(n_xstest, len(xst))))
         for i, row in enumerate(xst):
