@@ -53,7 +53,21 @@ PROVIDER_DEFAULT_MODELS = {
     "http":        "anthropic/claude-haiku-4-5",
     "huggingface": "Qwen/Qwen2.5-1.5B-Instruct",
 }
-MODEL = os.getenv("ARGUS_MODEL") or PROVIDER_DEFAULT_MODELS.get(PROVIDER_KIND, "")
+
+# Modal serves whatever model was deployed to its endpoint — ARGUS_MODEL
+# can only *mislabel* the audit, not change inference. Ignore any stale
+# value when provider=modal to prevent the OpenRouter→Modal env carry-over
+# bug (audit data tagged with the wrong model + landing in the wrong store).
+_user_model = os.getenv("ARGUS_MODEL")
+if PROVIDER_KIND == "modal":
+    MODEL = PROVIDER_DEFAULT_MODELS["modal"]
+    if _user_model and _user_model != MODEL:
+        print(
+            f"=== Note: ignoring stale ARGUS_MODEL={_user_model!r}; "
+            f"Modal endpoint serves {MODEL!r} ==="
+        )
+else:
+    MODEL = _user_model or PROVIDER_DEFAULT_MODELS.get(PROVIDER_KIND, "")
 MODEL_SLUG = re.sub(r"[^a-zA-Z0-9]+", "_", MODEL).strip("_").lower() or "default"
 VENDOR_NAME = f"{PROVIDER_KIND}:{MODEL}" if MODEL else PROVIDER_KIND
 
