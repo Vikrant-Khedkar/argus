@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .streamlit/secrets.toml
+.claude/
 
 # Runtime artifacts (Streamlit live demo noise; recreated each session)
 evals/live_log.jsonl
