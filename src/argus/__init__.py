@@ -3,7 +3,6 @@
 Public API.
 """
 
-# --- v1 (existing) — kept working via the legacy modules ---------------------
 from .providers import (
     ChatProvider,
     ProviderName,
@@ -23,17 +22,8 @@ from .guardrails import (
     PostFlightRegenGuard,
     PostFlightHardRefuseGuard,
 )
-from .memory import Conversation
-from .risk_score import (
-    RiskScorer,
-    RiskResult as LegacyRiskResult,  # v1's RiskResult dataclass
-    AXES,
-    DEFAULT_JUDGE_MODEL,
-)
-from .assistant import Assistant, load_persona, Guardrails
-from .observability import log_row, read_log, new_request_id, LOG_PATH
 
-# --- v2 (new) — pluggable type system + scorer abstractions ------------------
+# --- Type system + scorer abstractions --------------------------------------
 from .types import (
     Instance,
     ScoreResult,
@@ -124,20 +114,7 @@ __all__ = [
     "refresh_fail_index",
     "PostFlightRegenGuard",
     "PostFlightHardRefuseGuard",
-    # v1 legacy
-    "Conversation",
-    "RiskScorer",
-    "LegacyRiskResult",
-    "AXES",
-    "DEFAULT_JUDGE_MODEL",
-    "Assistant",
-    "Guardrails",
-    "load_persona",
-    "log_row",
-    "read_log",
-    "new_request_id",
-    "LOG_PATH",
-    # v2 types
+    # Types
     "Instance",
     "ScoreResult",
     "RiskResult",

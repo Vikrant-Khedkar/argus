@@ -64,7 +64,7 @@ from .tier_mapping import (
     GradeLetterMapping,
 )
 from .transforms.base import AttackTransform, get_transform_class
-from .risk_score import RUBRICS as DEFAULT_RUBRICS
+from .rubrics import DEFAULT_RUBRICS
 
 _TIER_MAPPINGS: dict[str, type[TierMapping]] = {
     "insurance": InsuranceTierMapping,
