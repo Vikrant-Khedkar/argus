@@ -4,6 +4,21 @@ __pycache__/
 *.pyc
 .DS_Store
 .streamlit/secrets.toml
+.claude/
 
 # Runtime artifacts (Streamlit live demo noise; recreated each session)
 evals/live_log.jsonl
+
+# Personal notes & interview prep — not for the repo
+interview_prep.md
+llm_fundamentals.md
+codebase_walkthrough.md
+helm_study.md
+plan.md
+docs/
+*.egg-info/
+examples/out/
+
+# v1 chat-assistant artifacts (replaced by v2 SDK + dashboard)
+eval_report.pdf
+todo.txt
