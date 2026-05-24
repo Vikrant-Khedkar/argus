@@ -28,12 +28,12 @@ Four categories: **deterministic** (no model call), **classifier-based**
 | Scorer | Model | Mechanism | What it catches |
 |---|---|---|---|
 | **`LlamaGuardScorer`** | `meta-llama/llama-guard-4-12b` via OpenRouter | Chat-completion: returns `safe` or `unsafe\nS<n>` where S1–S13 are MLCommons harm categories | Harm in (prompt, response) pairs — violence, weapons, sexual content, hate, privacy (S7), defamation (S5), etc. |
+| **`LlamaPromptGuardScorer`** | `meta-llama/llama-prompt-guard-2-86m` via OpenRouter | Tiny 86M classifier purpose-built for prompt injection / jailbreak. Returns BENIGN / INJECTION / JAILBREAK | Tier-3 of the pre-flight cascade — catches paraphrased jailbreaks regex misses |
 | **`PresidioScorer`** | Microsoft Presidio + spaCy `en_core_web_sm` (local, 13MB) | NER over the response text; detects entity types: PERSON, EMAIL_ADDRESS, PHONE_NUMBER, CREDIT_CARD, US_SSN, IP_ADDRESS, IBAN, US_DRIVER_LICENSE, US_PASSPORT, US_BANK_NUMBER, MEDICAL_LICENSE | Real or fabricated PII in the response. Production-standard NER, deterministic |
-| **`PerspectiveAPIScorer`** | Google Jigsaw Perspective API | REST call returns continuous 0–1 scores across TOXICITY, SEVERE_TOXICITY, IDENTITY_ATTACK, THREAT, INSULT. Argus inverts max-attribute to 0–2 | Toxicity, slurs, identity attacks |
 
-**Key property:** classifiers **don't self-refuse**. A frontier LLM judge asked to score "how to make sarin" may decline the evaluation request; Llama Guard just labels it `unsafe S9`. This is the core reason safety and toxicity axes are classifier-primary.
+**Key property:** classifiers **don't self-refuse**. A frontier LLM judge asked to score "how to make sarin" may decline the evaluation request; Llama Guard just labels it `unsafe S9`. This is the core reason the safety axis is classifier-primary.
 
-**Cost:** Llama Guard ~$0.0005/call (OpenRouter). Presidio is free (local). Perspective is free under 1 QPS.
+**Cost:** Llama Guard ~$0.0005/call (OpenRouter). Llama-Prompt-Guard-2 ~$0.0001/call. Presidio is free (local).
 
 **Failure mode:** binary or single-attribute outputs lose nuance. Llama Guard says safe/unsafe; it can't grade *degree* of unsafety. Pair with LLM judge for ordinal scoring when needed.
 
@@ -84,13 +84,13 @@ explicitly (see `EVAL_STRATEGY.md`).
 | Axis | Primary | Trigger to LLM judge | LLM-judge participation |
 |---|---|---|---|
 | `safety_liability` | LlamaGuard 4 12B | never | 0% |
-| `toxicity_liability` | Perspective API | `audit_sample_rate=0.20` | ~20% |
+| `toxicity_liability` | RefusalRegex (deterministic) | `audit_sample_rate=0.20` → Claude Sonnet 4 | ~20% |
 | `discrimination_liability` | Heterogeneous Legion: LlamaGuard + Sonnet + GPT-4o-mini + Gemini Flash, **median** | always (4-way ensemble) | 75% of votes |
 | `output_liability` | Sonnet 4 (no classifier exists for open-ended hallucination) | always | 100% |
 | `pii_leakage` | Presidio + ExactMatch | `fire_on_disagreement=1.0` | ~5% (only when classifiers split) |
 
 **Per-probe scoring cost rough breakdown:**
-- ~3 classifier calls (Llama Guard ×2 in safety + discrimination Legion; Perspective in toxicity; Presidio local; ExactMatch local)
+- ~2 classifier calls (Llama Guard ×2 in safety + discrimination Legion; Presidio local; ExactMatch local; RefusalRegex local)
 - ~4 LLM-judge calls (Legion 3 judges + output Sonnet, ± toxicity 20% audit, ± PII tie-break)
 - ≈ $0.013 per probe per axis = ~$0.05 per probe across 5 axes
 

@@ -77,7 +77,6 @@ forwards to the inner provider."*
 | `src/argus/scorers/llm_judge.py` | `LLMJudgeScorer(ModelBasedScorer)` — rubric + JSON-output prompt template. |
 | `src/argus/scorers/llama_guard.py` | `LlamaGuardScorer(ModelBasedScorer)` — Meta's safety classifier. Defaults to `meta-llama/llama-guard-4-12b`. Parses `safe` / `unsafe\nS<n>` → 2.0 / 0.0. |
 | `src/argus/scorers/llama_prompt_guard.py` | `LlamaPromptGuardScorer(ModelBasedScorer)` — Meta's 86M prompt-injection classifier. Used as tier 3 of the pre-flight cascade. |
-| `src/argus/scorers/perspective.py` | `PerspectiveAPIScorer` — direct REST call (NOT through ChatProvider) to Google Jigsaw. 5 attributes → max-attribute toxicity → inverted to 0–2. Free under 1 QPS; falls back gracefully if `PERSPECTIVE_API_KEY` unset. |
 | `src/argus/scorers/presidio.py` | `PresidioScorer` — local Microsoft Presidio NER. 11 PII entity types (PERSON/EMAIL/PHONE/SSN/CREDIT_CARD/etc.). Uses `en_core_web_sm` spaCy backbone for speed. Fails open if the lib isn't installed. |
 | `src/argus/scorers/multi_judge.py` | `MultiJudgeScorer` (**Legion mode**) — runs N judges in parallel via ThreadPoolExecutor, aggregates by mean/median/min/max/majority, stores per-judge attribution in `extra.per_judge`, computes stdev disagreement. `_safe_score` wrapper contains per-judge errors so one bad judge doesn't sink the row. |
 | `src/argus/scorers/composite.py` | `CompositeScorer` — primary chain + opt-in LLM-judge fallback. Triggers: `audit_sample_rate` (random N%), `value_zone=(lo,hi)` (selective prediction), `fire_on_disagreement` (ensemble disagreement). Defaults to no triggers = classifier-final. |
@@ -87,9 +86,10 @@ forwards to the inner provider."*
 | `src/argus/scorers/exact_match_pii.py` | `ExactMatchPIIScorer` — HELM-style PII memorization. Block on substring of `Instance.references` (secret PII strings the model shouldn't reproduce). |
 
 **Talk track for "how do you score safety?"**: open `composite.py` first
-(shows the policy architecture), then `llama_guard.py` (the safety primary),
-then `multi_judge.py` if they ask about the heterogeneous Legion for
-discrimination.
+(shows the policy architecture), then `llama_guard.py` (the safety primary
+classifier — categorical safe/unsafe with MLCommons S1–S13 hazard
+categories), then `multi_judge.py` if they ask about the heterogeneous
+Legion for discrimination.
 
 ---
 

@@ -8,7 +8,7 @@ modes that bite naive LLM-judge pipelines.
 | Axis | Primary signal | Why |
 |---|---|---|
 | **safety_liability** | classifier-final (Llama Guard 4 12B); optional N% audit-sample LLM judge | LLM judges hit *self-refusal* on extreme content. Llama Guard is trained to classify harm, not avoid engaging with it — and chat-API classifiers don't expose calibrated probabilities, so the right "second opinion" pattern is random audit sampling, not confidence-threshold cascade. |
-| **toxicity_liability** | classifier-final (Perspective API); optional N% audit-sample | Same self-refusal failure mode + Perspective is the industry-standard reference signal. |
+| **toxicity_liability** | deterministic refusal-detect primary + N% LLM-judge audit-sample | Cheap deterministic primary on the response; LLM judge spot-checks a random 20% of probes as a parallel signal. |
 | **discrimination_liability** | LLM judge (multi-judge in Legion mode) | No classifier with sufficient breadth for nuanced bias detection. Multi-judge mitigates single-judge bias. |
 | **calibration_liability** | LLM judge w/ reference data | Detecting *confident wrongness* needs a model that can reason about claim strength. |
 | **output_liability** | reference-based + LLM judge fallback | `KeyFactsScorer` is deterministic for probes with ground-truth references; LLM judge takes the rest. |
@@ -89,11 +89,12 @@ Naive policy = one LLM judge per axis per probe. At Claude Sonnet 4 pricing
 that's ~$0.005 per probe per axis. 1000 probes × 7 axes = $35 just for
 scoring, before any retries.
 
-**Argus's mitigation:** for safety + toxicity axes, the classifier
-(Llama Guard, Perspective) is **final** — no LLM judge is called for the
-hot path. This matches the deployed pattern at Anthropic / OpenAI /
-MLCommons AILuminate. Classifier cost is ~$0.0002/probe via OpenRouter,
-~25× cheaper than an LLM judge.
+**Argus's mitigation:** for the safety axis, Llama Guard is **final** —
+no LLM judge is called for the hot path. This matches the deployed
+pattern at Anthropic / OpenAI / MLCommons AILuminate. Classifier cost is
+~$0.0002/probe via OpenRouter, ~25× cheaper than an LLM judge. For
+toxicity, a deterministic refusal-detect runs on every probe with an
+LLM judge spot-checking a random 20%.
 
 For audit assurance you optionally **add** an LLM judge on a random N% of
 probes via `CompositeScorer(audit_sample_rate=0.15)` — the standard

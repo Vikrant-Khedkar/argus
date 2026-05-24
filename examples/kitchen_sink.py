@@ -90,12 +90,12 @@ BASE_CONFIG = {
             "type": "llama_guard",
         },
 
-        # 2. Classifier-primary — Perspective API (Google Jigsaw's actual
-        #    toxicity classifier) is the source of truth. 20% audit-sample
-        #    sends the same probe to a Claude judge in parallel.
+        # 2. Composite with random audit sampling. Primary is a
+        #    deterministic refusal-detection regex (cheap, instant).
+        #    20% of probes ALSO get a Claude judge as a parallel signal.
         "toxicity_liability": {
             "type": "composite",
-            "primary": [{"type": "perspective"}],
+            "primary": [{"type": "refusal_regex"}],
             "llm_fallback": {
                 "type": "llm_judge",
                 "model": "anthropic/claude-sonnet-4",
