@@ -971,13 +971,15 @@ with tab_probe:
 # ===========================================================================
 
 with tab_demo:
-    st.markdown("#### Replay a real exploit — before vs after guards")
+    st.markdown("#### Replay a past failure — before vs after guards")
     st.caption(
-        "Pick a prompt that broke a model in past audits. The **Before** "
+        "Pick a probe that scored Tier-3 in a baseline audit. The **Before** "
         "column shows the model's actual past response (the failure that "
         "made it Tier-3). The **After** column re-runs the same prompt "
-        "through the full guard cascade — usually short-circuits before "
-        "the model is even called."
+        "through the chosen guard cascade. **For real exploits** (safety, "
+        "PII, discrimination), this demonstrates protection. **For "
+        "hallucinations or over-refusals**, this shows guards don't help "
+        "(or actively cause the failure)."
     )
 
     # ------------- Pick a model context ---------------------------------
@@ -1005,42 +1007,96 @@ with tab_demo:
         st.stop()
     baseline_run_id = baseline_run.iloc[0]["run_id"]
 
-    # ------------- Pick a Tier-3 failure from this baseline run -------
+    # ------------- Pick a failure type ----------------------------------
+    # Tier-3 failures aren't all the same thing. Real EXPLOITS are
+    # safety/PII/discrimination — cases where the model produced harmful
+    # output. Hallucinations (output_liability) are knowledge failures
+    # that guards can't fix. Over-refusals (toxicity_liability) are often
+    # CAUSED by guards. Let the user pick which to demo.
+    FAILURE_TYPES = {
+        "Real exploits (safety + PII + discrimination)": {
+            "axes": ["safety_liability", "pii_leakage", "discrimination_liability"],
+            "blurb": "Cases where the model complied with a harmful request, "
+                     "leaked or fabricated PII, or gave discriminatory output. "
+                     "Guards genuinely protect against these.",
+        },
+        "Safety failures only": {
+            "axes": ["safety_liability"],
+            "blurb": "Model complied with a harmful / illegal / jailbreak "
+                     "request. The flagship exploit category.",
+        },
+        "PII leaks only": {
+            "axes": ["pii_leakage"],
+            "blurb": "Model leaked real PII or fabricated plausible-looking "
+                     "PII (medical records, addresses, SSNs, etc.).",
+        },
+        "Discrimination only": {
+            "axes": ["discrimination_liability"],
+            "blurb": "Model gave biased, stereotyping, or discriminatory output.",
+        },
+        "Hallucinations (NOT real exploits)": {
+            "axes": ["output_liability"],
+            "blurb": "Model confidently stated false facts. **Guards can't fix "
+                     "this** — they short-circuit prompts before the model "
+                     "answers; hallucinations need better model knowledge, "
+                     "not better guards.",
+        },
+        "Over-refusal (NOT real exploits)": {
+            "axes": ["toxicity_liability"],
+            "blurb": "Model refused a *benign* prompt that looked adversarial "
+                     "after a transform. **Guards often CAUSE these** — "
+                     "they short-circuit benign-but-transformed prompts.",
+        },
+        "All Tier-3 failures (mixed)": {
+            "axes": None,
+            "blurb": "Every row scored below 1.0 regardless of category.",
+        },
+    }
+
+    failure_choice = st.selectbox(
+        "Failure type",
+        options=list(FAILURE_TYPES.keys()),
+        key="demo_fail_type",
+    )
+    failure_spec = FAILURE_TYPES[failure_choice]
+    st.caption(failure_spec["blurb"])
+
     fails = df[
         (df["run_id"] == baseline_run_id)
         & (df["value"] < 1.0)
     ].copy()
+    if failure_spec["axes"]:
+        fails = fails[fails["axis"].isin(failure_spec["axes"])]
     if fails.empty:
         st.success(
-            f"No Tier-3 failures in baseline `{baseline_run_id[-8:]}` — "
-            "this model didn't break on any probe. Pick a different model "
-            "or run a larger audit."
+            f"No `{failure_choice}` in baseline `{baseline_run_id[-8:]}` "
+            "for this model. Pick a different failure type or model."
         )
         st.stop()
 
-    # One row per unique (instance_id, attack_transform) — collapse rows that
-    # the same prompt failed on multiple axes
+    # One row per unique (instance_id, transform, axis) — keep axis here
+    # so the same prompt failing on multiple axes shows up once per axis
     fails = fails.sort_values("value").drop_duplicates(
-        subset=["instance_id", "attack_transform"], keep="first",
+        subset=["instance_id", "attack_transform", "axis"], keep="first",
     )
     st.caption(
-        f"Pulling Tier-3 failures from baseline run "
-        f"{code_pill(baseline_run_id[-8:])} ({len(fails)} unique exploits)",
+        f"From baseline run "
+        f"{code_pill(baseline_run_id[-8:])} — {len(fails)} matching failures",
     )
     st.markdown("", unsafe_allow_html=True)
 
-    # Display labels for the selectbox
+    # Display labels — lead with axis tag so user sees what kind of failure
     fails["__label"] = fails.apply(
         lambda r: (
+            f"[{short_axis_name(r['axis'])}]  "
             f"{r['instance_id']}  ·  "
-            f"axis={short_axis_name(r['axis'])}  ·  "
             f"transform={r['attack_transform']}  ·  "
             f"score={r['value']:.2f}"
         ),
         axis=1,
     )
     chosen_label = st.selectbox(
-        "Pick an exploit to replay",
+        "Pick a failure to replay",
         options=fails["__label"].tolist(),
         key="demo_exploit",
     )
@@ -1070,10 +1126,14 @@ with tab_demo:
              "On: call the model live with the same prompt.",
     )
 
-    run = st.button("▶ Replay this exploit", type="primary", key="demo_run")
+    run = st.button("▶ Replay this failure", type="primary", key="demo_run")
 
     # ------------- Pre-pick context preview -----------------------------
-    st.markdown("**Exploit prompt:**")
+    st.markdown(
+        f"**Prompt** &nbsp; {axis_pill(chosen_fail['axis'])} &nbsp; "
+        f"{transform_pill(chosen_fail['attack_transform'])}",
+        unsafe_allow_html=True,
+    )
     st.code(chosen_fail["prompt"][:1500], language=None)
 
     if run:
@@ -1170,10 +1230,22 @@ with tab_demo:
         bcol, acol = st.columns(2)
 
         with bcol:
+            # Label by axis category — "EXPLOITED" only applies to real
+            # safety/PII/discrimination failures; hallucinations are
+            # KNOWLEDGE-FAILURE; over-refusals are OVER-REFUSED.
+            axis_label = chosen_fail["axis"]
+            if axis_label in ("safety_liability", "pii_leakage", "discrimination_liability"):
+                badge_text = "EXPLOITED"
+            elif axis_label == "output_liability":
+                badge_text = "HALLUCINATED"
+            elif axis_label == "toxicity_liability":
+                badge_text = "OVER-REFUSED"
+            else:
+                badge_text = "FAILED"
             st.markdown(
                 f'<div style="margin-bottom:8px;">'
                 f'<strong>Before</strong> — raw {model_chip(chosen_mut, small=True)} '
-                f'<span style="color:#dc2626;font-size:0.8em;font-weight:600;">EXPLOITED</span>'
+                f'<span style="color:#dc2626;font-size:0.8em;font-weight:600;">{badge_text}</span>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
