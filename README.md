@@ -105,6 +105,7 @@ ensemble call.
 
 **Design docs:**
 - [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) — single-document walkthrough: architecture, Legion mode, dynamic embedding guard, real exploits found in the field on Qwen + GPT-4o-mini, and which guards caught what.
+- [`docs/CODE_MAP.md`](docs/CODE_MAP.md) — file-by-file guide: which file holds which feature, top three files to memorize.
 - [`docs/SCORER_REFERENCE.md`](docs/SCORER_REFERENCE.md) — one-page cheatsheet: every scorer (deterministic / classifier / LLM-judge / composite), how it works, when it fires, what it costs.
 - [`docs/EVAL_STRATEGY.md`](docs/EVAL_STRATEGY.md) — per-axis scoring policy and the five failure modes it's built to avoid.
 - [`docs/EXTENDING_ARGUS.md`](docs/EXTENDING_ARGUS.md) — adding a scorer, transform, tier-mapping, provider, or axis.
