@@ -1226,4 +1226,3 @@ with tab_demo:
             st.code(response, language=None)
         else:
             st.markdown(response[:3000])
-    return ""
