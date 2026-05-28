@@ -2,6 +2,9 @@
 
 **Pluggable AI vendor risk audit SDK.** Point it at any chat model — OSS, frontier, hosted, self-deployed — and produce an underwriting-grade report measuring liability risk across 5 axes: safety, toxicity, discrimination, output hallucination, PII leakage.
 
+<img width="1048" height="818" alt="image" src="https://github.com/user-attachments/assets/d6e1e5ca-d071-4e1d-83cc-95891bf72b5a" />
+
+
 ## What it does
 
 - **Five-axis liability scoring** with a per-axis scoring policy: classifier-primary for safety (Llama Guard 4), Legion-mode ensemble for discrimination (4 voters), composite with audit-sampling for toxicity, LLM-judge for hallucination, dual-classifier with disagreement-triggered judge for PII.
